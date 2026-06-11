@@ -1,0 +1,14 @@
+{
+  "name": "ios-privacy-report-anywhere-rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "/Users/hailong/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node tests/run-tests.mjs",
+    "serve": "/Users/hailong/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m http.server 4173 --directory public",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.95.0"
+  }
+}

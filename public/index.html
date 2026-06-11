@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>iOS 隐私报告转 Anywhere 规则集</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbar" aria-label="转换工具">
+        <div class="title">
+          <div>
+            <p class="eyebrow">Privacy Report Converter</p>
+            <h1>iOS 隐私报告转 Anywhere 规则集</h1>
+          </div>
+          <div class="title-side">
+            <button id="themeToggle" type="button" class="ghost theme-toggle" aria-label="切换深色模式" aria-pressed="false">
+              <span class="theme-icon" aria-hidden="true"></span>
+            </button>
+            <p>本地解析 App Privacy Report，生成可导入 Anywhere 的 `.arrs` 规则集。</p>
+          </div>
+        </div>
+
+        <div class="file-line">
+          <input id="file" type="file" accept=".ndjson,.jsonl,.json">
+          <button id="parse" type="button">开始解析</button>
+        </div>
+
+        <div class="options" aria-label="解析选项">
+          <label><input id="filterFake" type="checkbox" checked>过滤 fake-IP</label>
+          <label><input id="filterPrivate" type="checkbox" checked>过滤私网 IP</label>
+          <label><input id="filterLocal" type="checkbox" checked>过滤本地 IP</label>
+          <label><input id="allowShared" type="checkbox">共享目标可归入多个 App</label>
+        </div>
+
+        <div class="privacy">
+          本地读取 · 不上传 · 无第三方统计
+        </div>
+
+        <progress id="progress" value="0" max="100"></progress>
+        <p id="status" class="status">等待选择 `.ndjson` 文件。</p>
+      </section>
+
+      <section id="stats" class="stats" aria-label="统计"></section>
+
+      <section class="workspace">
+        <aside class="panel app-panel">
+          <div class="panel-head">
+            <h2>应用</h2>
+            <div class="actions">
+              <button id="selectAll" type="button" class="ghost">全选</button>
+              <button id="clearSelection" type="button" class="ghost">清空</button>
+            </div>
+          </div>
+          <div id="apps" class="app-list"></div>
+        </aside>
+
+        <section class="panel preview-panel">
+          <div class="panel-head">
+            <h2>预览</h2>
+            <div class="actions">
+              <button id="downloadSelected" type="button" disabled>下载所选</button>
+              <button id="downloadAll" type="button" disabled>下载全部 ZIP</button>
+            </div>
+          </div>
+          <textarea id="preview" spellcheck="false" aria-label="规则预览"></textarea>
+        </section>
+      </section>
+
+      <section class="panel unresolved-panel">
+        <div class="panel-head">
+          <div>
+            <h2>代理容器待确认目标</h2>
+            <p>由代理类应用记录到、但无法可靠归还到具体应用的目标。</p>
+          </div>
+        </div>
+        <ul id="unresolved" class="unresolved"></ul>
+      </section>
+    </main>
+  </body>
+</html>

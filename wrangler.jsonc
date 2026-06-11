@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ios-privacy-report-anywhere-rules",
+  "compatibility_date": "2026-06-11",
+  "assets": {
+    "directory": "./public"
+  },
+  "observability": {
+    "enabled": false
+  }
+}
