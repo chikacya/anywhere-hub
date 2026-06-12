@@ -1,4 +1,4 @@
-export const ANYWHERE_RULE_LIMIT = 10000;
+export const ANYWHERE_RULE_LIMIT = 100000;
 
 export function buildArrsFiles(ruleSetName, rules, metadata = {}) {
   const sortedRules = [...rules].sort(compareRules);

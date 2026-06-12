@@ -53,6 +53,17 @@ assert.match(files[0].content, /^2, /m);
 const zip = createZip(files);
 assert.ok(zip.size > files[0].content.length);
 
+const oversizedRules = Array.from({ length: 100001 }, (_, index) => ({
+  type: 2,
+  value: `host-${String(index).padStart(6, "0")}.example.com`,
+}));
+const splitFiles = buildArrsFiles("Oversized", oversizedRules, {
+  generatedAt: "2026-06-11T00:00:00.000Z",
+});
+assert.equal(splitFiles.length, 2);
+assert.equal(splitFiles[0].count, 100000);
+assert.equal(splitFiles[1].count, 1);
+
 console.log(JSON.stringify({
   apps: attributed.apps.length,
   proxyTargets: parsed.proxyTargets.length,
