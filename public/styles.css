@@ -375,6 +375,27 @@ progress::-webkit-progress-value {
   justify-content: end;
 }
 
+.app-search {
+  border-bottom: 1px solid var(--soft-line);
+  padding: 12px 14px;
+}
+
+.app-search input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--file-bg);
+  color: var(--ink);
+  outline: none;
+  padding: 0 14px;
+}
+
+.app-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
 .app-list {
   height: 620px;
   overflow: auto;
@@ -417,6 +438,12 @@ input[type="checkbox"] {
 .app-meta {
   margin-top: 2px;
   font-size: 13px;
+}
+
+.empty-state {
+  padding: 24px 14px;
+  color: var(--muted);
+  text-align: center;
 }
 
 textarea {

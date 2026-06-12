@@ -9,6 +9,7 @@ const els = {
   progress: document.querySelector("#progress"),
   stats: document.querySelector("#stats"),
   apps: document.querySelector("#apps"),
+  appSearch: document.querySelector("#appSearch"),
   preview: document.querySelector("#preview"),
   unresolved: document.querySelector("#unresolved"),
   downloadSelected: document.querySelector("#downloadSelected"),
@@ -32,13 +33,14 @@ els.downloadSelected.addEventListener("click", () => downloadArtifact([...select
 els.downloadAll.addEventListener("click", () => downloadArtifact(report?.apps.map((app) => app.bundleID) || []));
 els.themeToggle.addEventListener("click", toggleTheme);
 els.selectAll.addEventListener("click", () => {
-  selectedBundleIDs = new Set(report?.apps.map((app) => app.bundleID) || []);
+  for (const app of getFilteredApps()) selectedBundleIDs.add(app.bundleID);
   renderApps();
 });
 els.clearSelection.addEventListener("click", () => {
   selectedBundleIDs.clear();
   renderApps();
 });
+els.appSearch.addEventListener("input", renderApps);
 
 async function parseSelectedFile() {
   const file = els.file.files?.[0];
@@ -53,6 +55,7 @@ async function parseSelectedFile() {
   els.preview.value = "";
   els.apps.innerHTML = "";
   els.unresolved.innerHTML = "";
+  els.appSearch.value = "";
   selectedBundleIDs.clear();
 
   const worker = new Worker("./report-worker.js", { type: "module" });
@@ -125,8 +128,9 @@ function renderApps() {
   if (!report) return;
   els.apps.innerHTML = "";
   const fragment = document.createDocumentFragment();
+  const apps = getFilteredApps();
 
-  for (const app of report.apps) {
+  for (const app of apps) {
     const row = document.createElement("label");
     row.className = "app-row";
     row.innerHTML = `
@@ -150,9 +154,17 @@ function renderApps() {
     fragment.append(row);
   }
 
+  if (apps.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "没有匹配的应用";
+    fragment.append(empty);
+  }
+
   els.apps.append(fragment);
   updateButtons();
-  if (report.apps[0]) showPreview(report.apps[0].bundleID);
+  if (apps[0]) showPreview(apps[0].bundleID);
+  else els.preview.value = "";
 }
 
 function renderUnresolved() {
@@ -216,6 +228,16 @@ function readableRuleSetName(app) {
   const label = displayBundleName(app.bundleID);
   const name = label.includes("(") ? label.slice(0, label.lastIndexOf("(")).trim() : label;
   return name || app.bundleID;
+}
+
+function getFilteredApps() {
+  if (!report) return [];
+  const query = els.appSearch.value.trim().toLowerCase();
+  if (!query) return report.apps;
+  return report.apps.filter((app) => {
+    const display = displayBundleName(app.bundleID).toLowerCase();
+    return display.includes(query) || app.bundleID.toLowerCase().includes(query);
+  });
 }
 
 function updateButtons() {
