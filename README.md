@@ -1,3 +1,3 @@
-# iOS Privacy Report to Anywhere Rules
+# Anywhere-hub
 
-把 iOS App 隐私报告 `.ndjson` 转成 Anywhere 可导入的 `.arrs` 规则集。
+Anywhere 常用规则集、MITM 脚本 Raw 链接和 iOS App 隐私报告 `.ndjson` 转 `.arrs` 工具。

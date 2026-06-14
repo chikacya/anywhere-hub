@@ -2,12 +2,41 @@ import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";
 import { createZip } from "./lib/zip.mjs";
 
+const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
+const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
+const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
+
 const els = {
+  tabs: [...document.querySelectorAll("[data-tab]")],
+  panels: [...document.querySelectorAll("[data-panel]")],
+  toast: document.querySelector("#toast"),
+  themeToggle: document.querySelector("#themeToggle"),
+
+  refreshRules: document.querySelector("#refreshRules"),
+  rulesStatus: document.querySelector("#rulesStatus"),
+  rulesSearch: document.querySelector("#rulesSearch"),
+  rulesList: document.querySelector("#rulesList"),
+  rulePreviewTitle: document.querySelector("#rulePreviewTitle"),
+  rulePreviewDescription: document.querySelector("#rulePreviewDescription"),
+  rulePreviewCode: document.querySelector("#rulePreviewCode"),
+  copyRuleRaw: document.querySelector("#copyRuleRaw"),
+
+  refreshMitm: document.querySelector("#refreshMitm"),
+  mitmStatus: document.querySelector("#mitmStatus"),
+  mitmSearch: document.querySelector("#mitmSearch"),
+  mitmList: document.querySelector("#mitmList"),
+  mitmPreviewTitle: document.querySelector("#mitmPreviewTitle"),
+  mitmPreviewDescription: document.querySelector("#mitmPreviewDescription"),
+  mitmPreviewCode: document.querySelector("#mitmPreviewCode"),
+  copyMitmRaw: document.querySelector("#copyMitmRaw"),
+
   file: document.querySelector("#file"),
   parse: document.querySelector("#parse"),
   status: document.querySelector("#status"),
   progress: document.querySelector("#progress"),
   stats: document.querySelector("#stats"),
+  conversionResults: document.querySelector("#conversionResults"),
+  unresolvedPanel: document.querySelector("#unresolvedPanel"),
   apps: document.querySelector("#apps"),
   appSearch: document.querySelector("#appSearch"),
   preview: document.querySelector("#preview"),
@@ -20,27 +49,211 @@ const els = {
   filterPrivate: document.querySelector("#filterPrivate"),
   filterLocal: document.querySelector("#filterLocal"),
   allowShared: document.querySelector("#allowShared"),
-  themeToggle: document.querySelector("#themeToggle"),
 };
 
 let report = null;
 let selectedBundleIDs = new Set();
 let objectUrls = [];
+let rules = [];
+let selectedRule = null;
+let mitmScripts = [];
+let selectedMitm = null;
+let toastTimer;
 
 initTheme();
-els.parse.addEventListener("click", parseSelectedFile);
-els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
-els.downloadAll.addEventListener("click", () => downloadArtifact(report?.apps.map((app) => app.bundleID) || []));
-els.themeToggle.addEventListener("click", toggleTheme);
-els.selectAll.addEventListener("click", () => {
-  for (const app of getFilteredApps()) selectedBundleIDs.add(app.bundleID);
-  renderApps();
-});
-els.clearSelection.addEventListener("click", () => {
-  selectedBundleIDs.clear();
-  renderApps();
-});
-els.appSearch.addEventListener("input", renderApps);
+bindEvents();
+loadRepositoryData();
+
+function bindEvents() {
+  for (const tab of els.tabs) {
+    tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+  }
+
+  els.themeToggle.addEventListener("click", toggleTheme);
+  els.refreshRules.addEventListener("click", () => loadRules({ force: true }));
+  els.refreshMitm.addEventListener("click", () => loadMitm({ force: true }));
+  els.rulesSearch.addEventListener("input", renderRules);
+  els.mitmSearch.addEventListener("input", renderMitm);
+  els.copyRuleRaw.addEventListener("click", () => copyText(selectedRule?.rawUrl, "已复制规则集 Raw 链接"));
+  els.copyMitmRaw.addEventListener("click", () => copyText(selectedMitm?.rawUrl, "已复制 MITM Raw 链接"));
+
+  els.parse.addEventListener("click", parseSelectedFile);
+  els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
+  els.downloadAll.addEventListener("click", () => downloadArtifact(report?.apps.map((app) => app.bundleID) || []));
+  els.selectAll.addEventListener("click", () => {
+    for (const app of getFilteredApps()) selectedBundleIDs.add(app.bundleID);
+    renderApps();
+  });
+  els.clearSelection.addEventListener("click", () => {
+    selectedBundleIDs.clear();
+    renderApps();
+  });
+  els.appSearch.addEventListener("input", renderApps);
+}
+
+function activateTab(name) {
+  for (const tab of els.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
+  for (const panel of els.panels) panel.classList.toggle("active", panel.dataset.panel === name);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function loadRepositoryData() {
+  await Promise.allSettled([loadRules(), loadMitm()]);
+}
+
+async function loadRules({ force = false } = {}) {
+  setLoading(els.refreshRules, true, "同步中");
+  els.rulesStatus.textContent = "正在同步 GitHub main/rules/common...";
+  try {
+    const data = await fetchJson(`${COMMON_INDEX_URL}${force ? `?t=${Date.now()}` : ""}`);
+    rules = (data.files || [])
+      .filter((item) => item.output_path?.startsWith("common/") && item.output_path.endsWith(".arrs"))
+      .map((item, index) => ({
+        name: item.name,
+        description: item.description || "Anywhere Routing Rule Set",
+        ruleCount: item.rule_count ?? 0,
+        skippedCount: item.skipped_count ?? 0,
+        sources: item.sources || [],
+        path: `rules/${item.output_path}`,
+        rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
+        color: colorForIndex(index),
+      }));
+    renderRules();
+    if (rules[0]) selectRule(rules[0]);
+    els.rulesStatus.textContent = `已同步 ${rules.length} 个 rules/common 规则集`;
+  } catch (error) {
+    rules = [];
+    renderRules();
+    els.rulesStatus.textContent = `同步失败：${error.message}`;
+    showToast("规则集同步失败，请稍后重试");
+  } finally {
+    setLoading(els.refreshRules, false, "同步远程");
+  }
+}
+
+function renderRules() {
+  const query = els.rulesSearch.value.trim().toLowerCase();
+  const filtered = rules.filter((rule) => {
+    const text = `${rule.name} ${rule.description} ${rule.path}`.toLowerCase();
+    return !query || text.includes(query);
+  });
+
+  els.rulesList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  for (const rule of filtered) {
+    const row = document.createElement("div");
+    row.className = `row raw-row ${selectedRule?.name === rule.name ? "active" : ""}`;
+    row.innerHTML = `
+      <button class="row-main" type="button">
+        <span class="glyph ${rule.color}">${escapeHtml(rule.name.slice(0, 2))}</span>
+        <span>
+          <b>${escapeHtml(rule.name)}</b>
+          <small>${rule.ruleCount.toLocaleString()} rules · ${escapeHtml(rule.description)}</small>
+        </span>
+        <i>预览</i>
+      </button>
+      <button class="row-copy" type="button" aria-label="复制 ${escapeHtml(rule.name)} Raw 链接">Raw</button>
+    `;
+    row.querySelector(".row-main").addEventListener("click", () => selectRule(rule));
+    row.querySelector(".row-copy").addEventListener("click", () => copyText(rule.rawUrl, "已复制规则集 Raw 链接"));
+    fragment.append(row);
+  }
+  if (filtered.length === 0) fragment.append(emptyState("没有匹配的规则集"));
+  els.rulesList.append(fragment);
+}
+
+async function selectRule(rule) {
+  selectedRule = rule;
+  renderRules();
+  els.copyRuleRaw.disabled = false;
+  els.rulePreviewTitle.textContent = rule.name;
+  els.rulePreviewDescription.textContent = `${rule.description} · ${rule.ruleCount.toLocaleString()} 条规则${rule.skippedCount ? ` · 跳过 ${rule.skippedCount} 条不兼容规则` : ""}`;
+  els.rulePreviewCode.textContent = `${rule.rawUrl}\n\n正在加载预览...`;
+  try {
+    const content = await fetchText(withCacheBust(rule.rawUrl));
+    els.rulePreviewCode.textContent = previewText(content, rule.rawUrl);
+  } catch {
+    els.rulePreviewCode.textContent = rule.rawUrl;
+  }
+}
+
+async function loadMitm({ force = false } = {}) {
+  setLoading(els.refreshMitm, true, "同步中");
+  els.mitmStatus.textContent = "正在同步 GitHub main/mitm...";
+  try {
+    const data = await fetchJson(`${MITM_API_URL}${force ? `&t=${Date.now()}` : ""}`);
+    mitmScripts = data
+      .filter((item) => item.type === "file" && item.name.endsWith(".amrs"))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((item, index) => ({
+        name: item.name.replace(/\.amrs$/i, ""),
+        filename: item.name,
+        path: item.path,
+        sha: item.sha,
+        rawUrl: `${RAW_BASE}/${item.path}`,
+        color: colorForIndex(index + 2),
+      }));
+    renderMitm();
+    if (mitmScripts[0]) selectMitm(mitmScripts[0]);
+    els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个实验性 .amrs`;
+  } catch (error) {
+    mitmScripts = [];
+    renderMitm();
+    els.mitmStatus.textContent = `同步失败：${error.message}`;
+    showToast("MITM 脚本同步失败，请稍后重试");
+  } finally {
+    setLoading(els.refreshMitm, false, "同步远程");
+  }
+}
+
+function renderMitm() {
+  const query = els.mitmSearch.value.trim().toLowerCase();
+  const filtered = mitmScripts.filter((script) => {
+    const text = `${script.name} ${script.filename}`.toLowerCase();
+    return !query || text.includes(query);
+  });
+
+  els.mitmList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  for (const script of filtered) {
+    const row = document.createElement("div");
+    row.className = `row raw-row ${selectedMitm?.filename === script.filename ? "active" : ""}`;
+    row.innerHTML = `
+      <button class="row-main" type="button">
+        <span class="glyph ${script.color}">MITM</span>
+        <span>
+          <b>${escapeHtml(script.name)}</b>
+          <small>实验性 · ${escapeHtml(script.filename)}</small>
+        </span>
+        <i>预览</i>
+      </button>
+      <button class="row-copy" type="button" aria-label="复制 ${escapeHtml(script.name)} Raw 链接">Raw</button>
+    `;
+    row.querySelector(".row-main").addEventListener("click", () => selectMitm(script));
+    row.querySelector(".row-copy").addEventListener("click", () => copyText(script.rawUrl, "已复制 MITM Raw 链接"));
+    fragment.append(row);
+  }
+  if (filtered.length === 0) fragment.append(emptyState("没有匹配的 MITM 脚本"));
+  els.mitmList.append(fragment);
+}
+
+async function selectMitm(script) {
+  selectedMitm = script;
+  renderMitm();
+  els.copyMitmRaw.disabled = false;
+  els.mitmPreviewTitle.textContent = script.name;
+  els.mitmPreviewDescription.textContent = "实验性 MITM 规则集，仅供交流与学习。请审阅内容后再导入 Anywhere。";
+  els.mitmPreviewCode.textContent = `${script.rawUrl}\n\n正在加载预览...`;
+  try {
+    const content = await fetchText(withCacheBust(script.rawUrl));
+    const meta = parseMitmMeta(content);
+    els.mitmPreviewTitle.textContent = meta.name || script.name;
+    els.mitmPreviewDescription.textContent = `${meta.hostnameCount.toLocaleString()} 个 hostname · ${meta.ruleCount.toLocaleString()} 条规则 · 实验性功能，仅供交流与学习`;
+    els.mitmPreviewCode.textContent = previewText(content, script.rawUrl);
+  } catch {
+    els.mitmPreviewCode.textContent = script.rawUrl;
+  }
+}
 
 async function parseSelectedFile() {
   const file = els.file.files?.[0];
@@ -53,9 +266,12 @@ async function parseSelectedFile() {
   setStatus("正在本地解析报告...");
   els.progress.value = 0;
   els.preview.value = "";
+  els.stats.innerHTML = "";
   els.apps.innerHTML = "";
   els.unresolved.innerHTML = "";
   els.appSearch.value = "";
+  els.conversionResults.hidden = true;
+  els.unresolvedPanel.hidden = true;
   selectedBundleIDs.clear();
 
   const worker = new Worker("./report-worker.js", { type: "module" });
@@ -110,16 +326,14 @@ function renderReport() {
   );
 
   els.stats.innerHTML = `
-    <div><strong>${report.lineCount.toLocaleString()}</strong><span>读取行数</span></div>
     <div><strong>${report.networkCount.toLocaleString()}</strong><span>网络记录</span></div>
     <div><strong>${report.apps.length.toLocaleString()}</strong><span>应用</span></div>
     <div><strong>${(report.proxyTargets?.length || 0).toLocaleString()}</strong><span>代理容器目标</span></div>
-    <div><strong>${summary.exactCount.toLocaleString()}</strong><span>精确归因</span></div>
-    <div><strong>${summary.suffixCount.toLocaleString()}</strong><span>后缀归因</span></div>
     <div><strong>${summary.unresolvedCount.toLocaleString()}</strong><span>待确认</span></div>
-    <div><strong>${report.filteredSpecialCount.toLocaleString()}</strong><span>过滤 IP</span></div>
   `;
 
+  els.conversionResults.hidden = false;
+  els.unresolvedPanel.hidden = !report.unresolvedProxyTargets?.length;
   renderApps();
   renderUnresolved();
 }
@@ -154,12 +368,7 @@ function renderApps() {
     fragment.append(row);
   }
 
-  if (apps.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "没有匹配的应用";
-    fragment.append(empty);
-  }
+  if (apps.length === 0) fragment.append(emptyState("没有匹配的应用"));
 
   els.apps.append(fragment);
   updateButtons();
@@ -257,9 +466,59 @@ function updateButtons() {
   els.downloadAll.textContent = allCount === 1 ? "下载全部 .arrs" : "下载全部 ZIP";
 }
 
+async function fetchJson(url) {
+  const response = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+async function fetchText(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.text();
+}
+
+function withCacheBust(url) {
+  return `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
+}
+
+function previewText(content, rawUrl) {
+  const lines = content.split("\n").slice(0, 160).join("\n");
+  return `${rawUrl}\n\n${lines}`;
+}
+
+function parseMitmMeta(content) {
+  const lines = content.split(/\r?\n/);
+  const name = lines.find((line) => line.trim().startsWith("name = "))?.split("=").slice(1).join("=").trim();
+  const hostLine = lines.find((line) => line.trim().startsWith("hostname = "));
+  const hostnameCount = hostLine
+    ? hostLine.split("=").slice(1).join("=").split(",").map((item) => item.trim()).filter(Boolean).length
+    : 0;
+  const ruleCount = lines.filter((line) => {
+    const trimmed = line.trim();
+    return trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("name =") && !trimmed.startsWith("hostname =");
+  }).length;
+  return { name, hostnameCount, ruleCount };
+}
+
+async function copyText(text, successMessage) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(successMessage);
+  } catch {
+    showToast("当前浏览器限制剪贴板，链接已显示在预览中");
+  }
+}
+
 function setBusy(busy) {
   els.parse.disabled = busy;
   els.file.disabled = busy;
+}
+
+function setLoading(button, loading, text) {
+  button.disabled = loading;
+  button.textContent = text;
 }
 
 function setStatus(text) {
@@ -271,12 +530,30 @@ function revokeUrls() {
   objectUrls = [];
 }
 
+function emptyState(text) {
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.textContent = text;
+  return empty;
+}
+
+function colorForIndex(index) {
+  return ["purple", "blue", "red", "orange", "pink", "green", "indigo", "gray"][index % 8];
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function showToast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => els.toast.classList.remove("show"), 1800);
 }
 
 function initTheme() {

@@ -3,84 +3,207 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>iOS 隐私报告转 Anywhere 规则集</title>
+    <title>Anywhere-hub</title>
     <link rel="stylesheet" href="./styles.css">
     <script type="module" src="./app.js"></script>
   </head>
   <body>
     <main class="shell">
-      <section class="toolbar" aria-label="转换工具">
-        <div class="title">
-          <div>
-            <p class="eyebrow">Privacy Report Converter</p>
-            <h1>iOS 隐私报告转 Anywhere 规则集</h1>
-          </div>
-          <div class="title-side">
-            <button id="themeToggle" type="button" class="ghost theme-toggle" aria-label="切换深色模式" aria-pressed="false">
-              <span class="theme-icon" aria-hidden="true"></span>
-            </button>
-            <p>本地解析 App Privacy Report，生成可导入 Anywhere 的 `.arrs` 规则集。</p>
-          </div>
+      <section class="app-window" aria-label="Anywhere-hub">
+        <div class="network-bg" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
         </div>
 
-        <div class="file-line">
-          <input id="file" type="file" accept=".ndjson,.jsonl,.json">
-          <button id="parse" type="button">开始解析</button>
-        </div>
-
-        <div class="options" aria-label="解析选项">
-          <label><input id="filterFake" type="checkbox" checked>过滤 fake-IP</label>
-          <label><input id="filterPrivate" type="checkbox" checked>过滤私网 IP</label>
-          <label><input id="filterLocal" type="checkbox" checked>过滤本地 IP</label>
-          <label><input id="allowShared" type="checkbox">共享目标可归入多个 App</label>
-        </div>
-
-        <div class="privacy">
-          本地读取 · 不上传 · 无第三方统计
-        </div>
-
-        <progress id="progress" value="0" max="100"></progress>
-        <p id="status" class="status">等待选择 `.ndjson` 文件。</p>
-      </section>
-
-      <section id="stats" class="stats" aria-label="统计"></section>
-
-      <section class="workspace">
-        <aside class="panel app-panel">
-          <div class="panel-head">
-            <h2>应用</h2>
-            <div class="actions">
-              <button id="selectAll" type="button" class="ghost">全选</button>
-              <button id="clearSelection" type="button" class="ghost">清空</button>
+        <header class="app-topbar">
+          <div class="brand-lockup">
+            <span class="brand-mark">A</span>
+            <div>
+              <b>Anywhere-hub</b>
+              <small>Anywhere<br>The best native proxy client for iOS, iPadOS, and tvOS.</small>
             </div>
           </div>
-          <div class="app-search">
-            <input id="appSearch" type="search" autocomplete="off" placeholder="搜索应用或 bundleID">
-          </div>
-          <div id="apps" class="app-list"></div>
-        </aside>
 
-        <section class="panel preview-panel">
-          <div class="panel-head">
-            <h2>预览</h2>
-            <div class="actions">
-              <button id="downloadSelected" type="button" disabled>下载所选</button>
-              <button id="downloadAll" type="button" disabled>下载全部 ZIP</button>
+          <nav class="feature-tabs" aria-label="功能切换">
+            <button class="active" type="button" data-tab="rules">规则集</button>
+            <button type="button" data-tab="converter">隐私报告转换</button>
+            <button type="button" data-tab="mitm">MITM 脚本</button>
+          </nav>
+
+          <button id="themeToggle" type="button" class="icon-button" aria-label="切换深色模式" aria-pressed="false"></button>
+        </header>
+
+        <section class="panel active" data-panel="rules">
+          <div class="hero-row compact-hero">
+            <div>
+              <p class="section-kicker">rules/common</p>
+              <h1>常用规则集</h1>
+              <p>仅显示 `rules/common` 里的常用 `.arrs` 规则集，列表从 GitHub main 分支同步。</p>
+            </div>
+            <div class="hero-actions">
+              <a class="repo-link" href="https://github.com/chikacya/anywhere-rules" target="_blank" rel="noreferrer">打开远程仓库</a>
+              <button id="refreshRules" type="button" class="primary">同步远程</button>
             </div>
           </div>
-          <textarea id="preview" spellcheck="false" aria-label="规则预览"></textarea>
+
+          <div class="content-grid">
+            <section class="native-card list-panel">
+              <div class="card-toolbar">
+                <div>
+                  <h2>常用规则集</h2>
+                  <p id="rulesStatus">正在同步 GitHub...</p>
+                </div>
+                <div class="list-tools">
+                  <label class="search-box">
+                    <input id="rulesSearch" type="search" autocomplete="off" placeholder="搜索规则集">
+                  </label>
+                </div>
+              </div>
+              <div id="rulesList" class="rows"></div>
+            </section>
+
+            <section class="native-card preview-panel">
+              <div class="preview-head">
+                <div>
+                  <p class="section-kicker">Preview</p>
+                  <h2 id="rulePreviewTitle">等待选择</h2>
+                </div>
+                <button id="copyRuleRaw" class="copy-button" type="button" disabled>复制 Raw</button>
+              </div>
+              <p id="rulePreviewDescription">选择一个规则集后，这里会显示说明、规则数量和 Raw 链接。</p>
+              <pre id="rulePreviewCode">raw.githubusercontent.com/chikacya/anywhere-rules/main/rules/common/...</pre>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="converter">
+          <div class="hero-row">
+            <div>
+              <p class="section-kicker">Privacy Report Converter</p>
+              <h1>本地转换 App Privacy Report</h1>
+              <p>使用 iOS App 隐私报告生成 Anywhere `.arrs` 规则集。报告只在本地浏览器读取和解析。</p>
+            </div>
+          </div>
+
+          <section class="native-card upload-panel" aria-label="转换工具">
+            <div class="upload-copy">
+              <span class="glyph blue large">⇧</span>
+              <div>
+                <h2>选择 `.ndjson` 文件</h2>
+                <p>本地读取 · 不上传 · 无第三方统计</p>
+              </div>
+            </div>
+
+            <div class="file-line">
+              <input id="file" type="file" accept=".ndjson,.jsonl,.json">
+              <button id="parse" type="button" class="primary">开始解析</button>
+            </div>
+
+            <div class="options" aria-label="解析选项">
+              <label><input id="filterFake" type="checkbox" checked>过滤 fake-IP</label>
+              <label><input id="filterPrivate" type="checkbox" checked>过滤私网 IP</label>
+              <label><input id="filterLocal" type="checkbox" checked>过滤本地 IP</label>
+              <label><input id="allowShared" type="checkbox">共享目标可归入多个 App</label>
+            </div>
+
+            <progress id="progress" value="0" max="100"></progress>
+            <p id="status" class="status">等待选择 `.ndjson` 文件。</p>
+          </section>
+
+          <section id="stats" class="metrics" aria-label="统计"></section>
+
+          <section id="conversionResults" class="converter-results" hidden>
+            <aside class="native-card app-panel">
+              <div class="card-toolbar">
+                <div>
+                  <h2>应用</h2>
+                  <p>点击预览，勾选后下载。</p>
+                </div>
+                <div class="actions">
+                  <button id="selectAll" type="button" class="ghost">全选</button>
+                  <button id="clearSelection" type="button" class="ghost">清空</button>
+                </div>
+              </div>
+              <label class="search-box full">
+                <input id="appSearch" type="search" autocomplete="off" placeholder="搜索应用或 bundleID">
+              </label>
+              <div id="apps" class="app-list"></div>
+            </aside>
+
+            <section class="native-card report-preview-panel">
+              <div class="preview-head">
+                <div>
+                  <p class="section-kicker">Generated .arrs</p>
+                  <h2>规则预览</h2>
+                </div>
+                <div class="actions">
+                  <button id="downloadSelected" type="button" disabled>下载所选</button>
+                  <button id="downloadAll" type="button" disabled>下载全部 ZIP</button>
+                </div>
+              </div>
+              <textarea id="preview" spellcheck="false" aria-label="规则预览" placeholder="解析完成后，这里会显示选中 App 的规则。"></textarea>
+            </section>
+          </section>
+
+          <section id="unresolvedPanel" class="native-card unresolved-panel" hidden>
+            <div class="card-toolbar">
+              <div>
+                <h2>代理容器待确认目标</h2>
+                <p>由代理类应用记录到、但无法可靠归还到具体应用的目标。</p>
+              </div>
+            </div>
+            <ul id="unresolved" class="unresolved"></ul>
+          </section>
+        </section>
+
+        <section class="panel" data-panel="mitm">
+          <div class="hero-row compact-hero">
+            <div>
+              <p class="section-kicker">mitm</p>
+              <h1>MITM 脚本</h1>
+              <p>从 `mitm` 目录同步 `.amrs` 规则集。MITM 涉及请求/响应改写，请务必理解内容后再使用。</p>
+            </div>
+            <div class="hero-actions">
+              <a class="repo-link" href="https://github.com/chikacya/anywhere-rules" target="_blank" rel="noreferrer">打开远程仓库</a>
+              <button id="refreshMitm" type="button" class="primary">同步远程</button>
+            </div>
+          </div>
+
+          <div class="experiment-banner">
+            <b>实验性功能</b>
+            <span>MITM 脚本仅供交流与学习。使用前请自行审阅规则和脚本内容，风险自负。</span>
+          </div>
+
+          <div class="content-grid">
+            <section class="native-card list-panel">
+              <div class="card-toolbar">
+                <div>
+                  <h2>MITM 脚本</h2>
+                  <p id="mitmStatus">正在同步 GitHub...</p>
+                </div>
+                <div class="list-tools">
+                  <label class="search-box">
+                    <input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本">
+                  </label>
+                </div>
+              </div>
+              <div id="mitmList" class="rows"></div>
+            </section>
+
+            <section class="native-card preview-panel">
+              <div class="preview-head">
+                <div>
+                  <p class="section-kicker">Experimental preview</p>
+                  <h2 id="mitmPreviewTitle">等待选择</h2>
+                </div>
+                <button id="copyMitmRaw" class="copy-button" type="button" disabled>复制 Raw</button>
+              </div>
+              <p id="mitmPreviewDescription">选择一个 `.amrs` 后，这里会显示 MITM 规则摘要和 Raw 链接。</p>
+              <pre id="mitmPreviewCode">raw.githubusercontent.com/chikacya/anywhere-rules/main/mitm/...</pre>
+            </section>
+          </div>
         </section>
       </section>
-
-      <section class="panel unresolved-panel">
-        <div class="panel-head">
-          <div>
-            <h2>代理容器待确认目标</h2>
-            <p>由代理类应用记录到、但无法可靠归还到具体应用的目标。</p>
-          </div>
-        </div>
-        <ul id="unresolved" class="unresolved"></ul>
-      </section>
     </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>
