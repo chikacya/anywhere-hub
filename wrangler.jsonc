@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "anywhere-hub",
+  "name": "ios-privacy-report-anywhere-rules",
   "compatibility_date": "2026-06-11",
   "assets": {
     "directory": "./public"
