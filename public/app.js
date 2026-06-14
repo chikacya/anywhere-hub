@@ -75,7 +75,7 @@ function bindEvents() {
   els.rulesSearch.addEventListener("input", renderRules);
   els.mitmSearch.addEventListener("input", renderMitm);
   els.copyRuleRaw.addEventListener("click", () => copyText(selectedRule?.rawUrl, "已复制规则集 Raw 链接"));
-  els.copyMitmRaw.addEventListener("click", () => copyText(selectedMitm?.rawUrl, "已复制 MITM Raw 链接"));
+  els.copyMitmRaw.addEventListener("click", () => copyText(selectedMitm?.rawUrl, "已复制 AMRS Raw 链接"));
 
   els.parse.addEventListener("click", parseSelectedFile);
   els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
@@ -182,8 +182,14 @@ async function loadMitm({ force = false } = {}) {
   els.mitmStatus.textContent = "正在同步 GitHub main/mitm...";
   try {
     const data = await fetchJson(`${MITM_API_URL}${force ? `&t=${Date.now()}` : ""}`);
-    mitmScripts = data
-      .filter((item) => item.type === "file" && item.name.endsWith(".amrs"))
+    const mitmFiles = data.filter((item) => item.type === "file");
+    const rejectFiles = new Map(
+      mitmFiles
+        .filter((item) => item.name.endsWith(".arrs"))
+        .map((item) => [item.name.toLowerCase(), item]),
+    );
+    mitmScripts = mitmFiles
+      .filter((item) => item.name.endsWith(".amrs"))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((item, index) => ({
         name: item.name.replace(/\.amrs$/i, ""),
@@ -191,6 +197,7 @@ async function loadMitm({ force = false } = {}) {
         path: item.path,
         sha: item.sha,
         rawUrl: `${RAW_BASE}/${item.path}`,
+        reject: findRejectForMitm(item, rejectFiles),
         color: colorForIndex(index + 2),
       }));
     renderMitm();
@@ -227,10 +234,14 @@ function renderMitm() {
         </span>
         <i>预览</i>
       </button>
-      <button class="row-copy" type="button" aria-label="复制 ${escapeHtml(script.name)} Raw 链接">Raw</button>
+      <div class="raw-actions" aria-label="${escapeHtml(script.name)} Raw 链接">
+        <button class="row-copy" data-copy="amrs" type="button" aria-label="复制 ${escapeHtml(script.name)} AMRS Raw 链接">AMRS</button>
+        ${script.reject ? `<button class="row-copy" data-copy="reject" type="button" aria-label="复制 ${escapeHtml(script.reject.name)} Raw 链接">Reject</button>` : ""}
+      </div>
     `;
     row.querySelector(".row-main").addEventListener("click", () => selectMitm(script));
-    row.querySelector(".row-copy").addEventListener("click", () => copyText(script.rawUrl, "已复制 MITM Raw 链接"));
+    row.querySelector('[data-copy="amrs"]').addEventListener("click", () => copyText(script.rawUrl, "已复制 AMRS Raw 链接"));
+    row.querySelector('[data-copy="reject"]')?.addEventListener("click", () => copyText(script.reject.rawUrl, "已复制 Reject Raw 链接"));
     fragment.append(row);
   }
   if (filtered.length === 0) fragment.append(emptyState("没有匹配的 MITM 脚本"));
@@ -501,13 +512,33 @@ function parseMitmMeta(content) {
   return { name, hostnameCount, ruleCount };
 }
 
+function findRejectForMitm(item, rejectFiles) {
+  const baseName = item.name.replace(/\.amrs$/i, "");
+  const candidates = [
+    `${baseName}Reject.arrs`,
+    `${baseName.replace(/(?:BlockAD|PriceUnlock|Unlock)$/i, "")}Reject.arrs`,
+  ];
+  const reject = candidates
+    .map((name) => rejectFiles.get(name.toLowerCase()))
+    .find(Boolean);
+
+  return reject
+    ? {
+        name: reject.name,
+        filename: reject.name,
+        path: reject.path,
+        rawUrl: `${RAW_BASE}/${reject.path}`,
+      }
+    : null;
+}
+
 async function copyText(text, successMessage) {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
     showToast(successMessage);
   } catch {
-    showToast("当前浏览器限制剪贴板，链接已显示在预览中");
+    showToast("当前浏览器限制剪贴板，无法自动复制");
   }
 }
 

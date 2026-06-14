@@ -470,6 +470,13 @@ input[type="file"] {
   padding: 0 12px;
 }
 
+.raw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .row.active,
 .app-row:has(input:checked) {
   border-color: color-mix(in srgb, var(--anywhere), transparent 46%);
@@ -838,6 +845,16 @@ code {
 
   .row {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .raw-actions {
+    align-self: stretch;
+    flex-direction: column;
+  }
+
+  .raw-actions .row-copy {
+    min-height: 30px;
+    padding: 0 10px;
   }
 
   .row-main {
