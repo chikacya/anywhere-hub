@@ -19,7 +19,8 @@ const els = {
   rulePreviewTitle: document.querySelector("#rulePreviewTitle"),
   rulePreviewDescription: document.querySelector("#rulePreviewDescription"),
   rulePreviewCode: document.querySelector("#rulePreviewCode"),
-  copyRuleRaw: document.querySelector("#copyRuleRaw"),
+  importSelectedRules: document.querySelector("#importSelectedRules"),
+  importRuleCurrent: document.querySelector("#importRuleCurrent"),
 
   refreshMitm: document.querySelector("#refreshMitm"),
   mitmStatus: document.querySelector("#mitmStatus"),
@@ -28,7 +29,7 @@ const els = {
   mitmPreviewTitle: document.querySelector("#mitmPreviewTitle"),
   mitmPreviewDescription: document.querySelector("#mitmPreviewDescription"),
   mitmPreviewCode: document.querySelector("#mitmPreviewCode"),
-  copyMitmRaw: document.querySelector("#copyMitmRaw"),
+  importMitmCurrent: document.querySelector("#importMitmCurrent"),
 
   file: document.querySelector("#file"),
   parse: document.querySelector("#parse"),
@@ -56,6 +57,7 @@ let selectedBundleIDs = new Set();
 let objectUrls = [];
 let rules = [];
 let selectedRule = null;
+let selectedRuleUrls = new Set();
 let mitmScripts = [];
 let selectedMitm = null;
 let toastTimer;
@@ -74,8 +76,9 @@ function bindEvents() {
   els.refreshMitm.addEventListener("click", () => loadMitm({ force: true }));
   els.rulesSearch.addEventListener("input", renderRules);
   els.mitmSearch.addEventListener("input", renderMitm);
-  els.copyRuleRaw.addEventListener("click", () => copyText(selectedRule?.rawUrl, "已复制规则集 Raw 链接"));
-  els.copyMitmRaw.addEventListener("click", () => copyText(selectedMitm?.rawUrl, "已复制 AMRS Raw 链接"));
+  els.importSelectedRules.addEventListener("click", importSelectedRules);
+  els.importRuleCurrent.addEventListener("click", () => importRuleSet(selectedRule));
+  els.importMitmCurrent.addEventListener("click", () => importMitmSet(selectedMitm));
 
   els.parse.addEventListener("click", parseSelectedFile);
   els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
@@ -118,11 +121,13 @@ async function loadRules({ force = false } = {}) {
         rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
         color: colorForIndex(index),
       }));
+    selectedRuleUrls = new Set([...selectedRuleUrls].filter((url) => rules.some((rule) => rule.rawUrl === url)));
     renderRules();
     if (rules[0]) selectRule(rules[0]);
     els.rulesStatus.textContent = `已同步 ${rules.length} 个 rules/common 规则集`;
   } catch (error) {
     rules = [];
+    selectedRuleUrls.clear();
     renderRules();
     els.rulesStatus.textContent = `同步失败：${error.message}`;
     showToast("规则集同步失败，请稍后重试");
@@ -141,9 +146,13 @@ function renderRules() {
   els.rulesList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const rule of filtered) {
+    const checked = selectedRuleUrls.has(rule.rawUrl);
     const row = document.createElement("div");
-    row.className = `row raw-row ${selectedRule?.name === rule.name ? "active" : ""}`;
+    row.className = `row raw-row selectable ${selectedRule?.name === rule.name ? "active" : ""} ${checked ? "selected" : ""}`;
     row.innerHTML = `
+      <label class="row-check" aria-label="选择 ${escapeHtml(rule.name)}">
+        <input class="row-select" type="checkbox" ${checked ? "checked" : ""}>
+      </label>
       <button class="row-main" type="button">
         <span class="glyph ${rule.color}">${escapeHtml(rule.name.slice(0, 2))}</span>
         <span>
@@ -152,20 +161,24 @@ function renderRules() {
         </span>
         <i>预览</i>
       </button>
-      <button class="row-copy" type="button" aria-label="复制 ${escapeHtml(rule.name)} Raw 链接">Raw</button>
+      <button class="row-copy" type="button" aria-label="导入 ${escapeHtml(rule.name)}">导入</button>
     `;
+    row.querySelector(".row-select").addEventListener("change", (event) => {
+      toggleRuleSelection(rule, event.currentTarget.checked);
+    });
     row.querySelector(".row-main").addEventListener("click", () => selectRule(rule));
-    row.querySelector(".row-copy").addEventListener("click", () => copyText(rule.rawUrl, "已复制规则集 Raw 链接"));
+    row.querySelector(".row-copy").addEventListener("click", () => importRuleSet(rule));
     fragment.append(row);
   }
   if (filtered.length === 0) fragment.append(emptyState("没有匹配的规则集"));
   els.rulesList.append(fragment);
+  updateRuleImportButtons();
 }
 
 async function selectRule(rule) {
   selectedRule = rule;
   renderRules();
-  els.copyRuleRaw.disabled = false;
+  updateRuleImportButtons();
   els.rulePreviewTitle.textContent = rule.name;
   els.rulePreviewDescription.textContent = `${rule.description} · ${rule.ruleCount.toLocaleString()} 条规则${rule.skippedCount ? ` · 跳过 ${rule.skippedCount} 条不兼容规则` : ""}`;
   els.rulePreviewCode.textContent = `${rule.rawUrl}\n\n正在加载预览...`;
@@ -175,6 +188,32 @@ async function selectRule(rule) {
   } catch {
     els.rulePreviewCode.textContent = rule.rawUrl;
   }
+}
+
+function toggleRuleSelection(rule, checked) {
+  if (checked) selectedRuleUrls.add(rule.rawUrl);
+  else selectedRuleUrls.delete(rule.rawUrl);
+  renderRules();
+}
+
+function updateRuleImportButtons() {
+  els.importRuleCurrent.disabled = !selectedRule;
+  els.importSelectedRules.disabled = selectedRuleUrls.size === 0;
+  els.importSelectedRules.textContent = selectedRuleUrls.size
+    ? `导入所选 ${selectedRuleUrls.size}`
+    : "导入所选";
+}
+
+function importRuleSet(rule) {
+  if (!rule) return;
+  openRuleSetImport([rule.rawUrl]);
+}
+
+function importSelectedRules() {
+  const selected = rules
+    .filter((rule) => selectedRuleUrls.has(rule.rawUrl))
+    .map((rule) => rule.rawUrl);
+  openRuleSetImport(selected);
 }
 
 async function loadMitm({ force = false } = {}) {
@@ -234,14 +273,12 @@ function renderMitm() {
         </span>
         <i>预览</i>
       </button>
-      <div class="raw-actions" aria-label="${escapeHtml(script.name)} Raw 链接">
-        <button class="row-copy" data-copy="amrs" type="button" aria-label="复制 ${escapeHtml(script.name)} AMRS Raw 链接">AMRS</button>
-        ${script.reject ? `<button class="row-copy" data-copy="reject" type="button" aria-label="复制 ${escapeHtml(script.reject.name)} Raw 链接">Reject</button>` : ""}
+      <div class="raw-actions" aria-label="${escapeHtml(script.name)} 导入操作">
+        <button class="row-copy" type="button" aria-label="导入 ${escapeHtml(script.name)}${script.reject ? " 和配套 Reject" : ""}">导入</button>
       </div>
     `;
     row.querySelector(".row-main").addEventListener("click", () => selectMitm(script));
-    row.querySelector('[data-copy="amrs"]').addEventListener("click", () => copyText(script.rawUrl, "已复制 AMRS Raw 链接"));
-    row.querySelector('[data-copy="reject"]')?.addEventListener("click", () => copyText(script.reject.rawUrl, "已复制 Reject Raw 链接"));
+    row.querySelector(".row-copy").addEventListener("click", () => importMitmSet(script));
     fragment.append(row);
   }
   if (filtered.length === 0) fragment.append(emptyState("没有匹配的 MITM 脚本"));
@@ -251,7 +288,7 @@ function renderMitm() {
 async function selectMitm(script) {
   selectedMitm = script;
   renderMitm();
-  els.copyMitmRaw.disabled = false;
+  els.importMitmCurrent.disabled = false;
   els.mitmPreviewTitle.textContent = script.name;
   els.mitmPreviewDescription.textContent = "实验性 MITM 规则集，仅供交流与学习。请审阅内容后再导入 Anywhere。";
   els.mitmPreviewCode.textContent = `${script.rawUrl}\n\n正在加载预览...`;
@@ -264,6 +301,13 @@ async function selectMitm(script) {
   } catch {
     els.mitmPreviewCode.textContent = script.rawUrl;
   }
+}
+
+function importMitmSet(script) {
+  if (!script) return;
+  const links = [script.rawUrl];
+  if (script.reject?.rawUrl) links.push(script.reject.rawUrl);
+  openRuleSetImport(links);
 }
 
 async function parseSelectedFile() {
@@ -483,6 +527,14 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function openRuleSetImport(links) {
+  const validLinks = links.filter(Boolean);
+  if (validLinks.length === 0) return;
+  const query = validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&");
+  window.location.href = `anywhere://add-rule-set?${query}`;
+  showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
+}
+
 async function fetchText(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -530,16 +582,6 @@ function findRejectForMitm(item, rejectFiles) {
         rawUrl: `${RAW_BASE}/${reject.path}`,
       }
     : null;
-}
-
-async function copyText(text, successMessage) {
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    showToast(successMessage);
-  } catch {
-    showToast("当前浏览器限制剪贴板，无法自动复制");
-  }
 }
 
 function setBusy(busy) {

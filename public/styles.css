@@ -446,6 +446,23 @@ input[type="file"] {
   transition: background 180ms ease, transform 180ms ease, border-color 180ms ease;
 }
 
+.row.selectable {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.row-check {
+  display: grid;
+  min-width: 34px;
+  min-height: 46px;
+  place-items: center;
+}
+
+.row-select {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--anywhere);
+}
+
 .row-main {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) auto;
@@ -478,6 +495,7 @@ input[type="file"] {
 }
 
 .row.active,
+.row.selected,
 .app-row:has(input:checked) {
   border-color: color-mix(in srgb, var(--anywhere), transparent 46%);
   background: color-mix(in srgb, var(--anywhere), transparent 88%);
@@ -845,6 +863,10 @@ code {
 
   .row {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .row.selectable {
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .raw-actions {
