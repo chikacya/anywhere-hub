@@ -342,6 +342,24 @@ h2 {
   color: var(--page);
 }
 
+.copy-button,
+#importSelectedRules,
+.row-copy {
+  border: 1px solid color-mix(in srgb, var(--ink), transparent 82%);
+  background: color-mix(in srgb, var(--ink), transparent 8%);
+  color: var(--page);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="light"] .copy-button,
+:root[data-theme="light"] #importSelectedRules,
+:root[data-theme="light"] .row-copy {
+  border-color: rgba(10, 20, 34, 0.14);
+  background: #111827;
+  color: white;
+  box-shadow: 0 10px 22px rgba(12, 24, 40, 0.16);
+}
+
 .ghost {
   border: 1px solid var(--line);
   background: var(--soft);
@@ -353,6 +371,20 @@ h2 {
 .ghost:hover:not(:disabled),
 .row:hover {
   transform: translateY(-1px);
+}
+
+.copy-button:hover:not(:disabled),
+#importSelectedRules:hover:not(:disabled),
+.row-copy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink), transparent 2%);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+}
+
+:root[data-theme="light"] .copy-button:hover:not(:disabled),
+:root[data-theme="light"] #importSelectedRules:hover:not(:disabled),
+:root[data-theme="light"] .row-copy:hover:not(:disabled) {
+  background: #050914;
+  box-shadow: 0 12px 26px rgba(12, 24, 40, 0.2);
 }
 
 .content-grid {
@@ -479,12 +511,10 @@ input[type="file"] {
 
 .row-copy {
   min-height: 34px;
-  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--soft);
-  color: var(--ink);
-  font-weight: 780;
-  padding: 0 12px;
+  font-weight: 860;
+  padding: 0 14px;
+  white-space: nowrap;
 }
 
 .raw-actions {
