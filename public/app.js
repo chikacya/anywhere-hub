@@ -237,7 +237,7 @@ async function loadMitm({ force = false } = {}) {
         sha: item.sha,
         rawUrl: `${RAW_BASE}/${item.path}`,
         reject: findRejectForMitm(item, rejectFiles),
-        color: colorForIndex(index + 2),
+        color: colorForIndex(index),
       }));
     renderMitm();
     if (mitmScripts[0]) selectMitm(mitmScripts[0]);
@@ -266,7 +266,7 @@ function renderMitm() {
     row.className = `row raw-row ${selectedMitm?.filename === script.filename ? "active" : ""}`;
     row.innerHTML = `
       <button class="row-main" type="button">
-        <span class="glyph ${script.color}">MITM</span>
+        <span class="glyph ${script.color}">${escapeHtml(script.name.slice(0, 2))}</span>
         <span>
           <b>${escapeHtml(script.name)}</b>
           <small>实验性 · ${escapeHtml(script.filename)}</small>
@@ -631,8 +631,7 @@ function showToast(message) {
 
 function initTheme() {
   const stored = localStorage.getItem("theme");
-  const preferred = window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  applyTheme(stored || preferred);
+  applyTheme(stored || "light");
 }
 
 function toggleTheme() {
