@@ -5,6 +5,73 @@ import { createZip } from "./lib/zip.mjs";
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
 const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
+const ICON_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/120px";
+const OTHER_ICON_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main/Other_icon/120px";
+const LARGE_ICON_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/1024px";
+const ICON_RAW_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main";
+const ICON_TREE_URL = "https://api.github.com/repos/luestr/IconResource/git/trees/main?recursive=1";
+const APP_STORE_ICON_URL = `${OTHER_ICON_BASE}/AppStore.png`;
+const XIAOHONGSHU_ICON_URL = `${LARGE_ICON_BASE}/${encodeURIComponent("小红书.png")}`;
+const FANQIE_NOVEL_ICON_URL = `${LARGE_ICON_BASE}/${encodeURIComponent("番茄小说.png")}`;
+const PIXIV_ICON_URL = `${LARGE_ICON_BASE}/pixiv.png`;
+const APPLE_MAPS_ICON_URL = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/67/05/f8/6705f876-0db2-711d-0d42-524ef6432165/maps-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/120x120bb.jpg";
+const ONEDRIVE_ICON_URL = "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/68/bd/d6/68bdd6c8-0699-a2e2-ec51-3e0c5333798a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/120x120bb.jpg";
+const FACEBOOK_ICON_URL = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f9/16/25/f91625c5-c207-b2db-9994-0cf496af8154/Icon-Production-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/120x120bb.jpg";
+const STEAM_ICON_URL = `${LARGE_ICON_BASE}/Steam_Mobile.png`;
+const MITM_APP_ICONS = {
+  AmapBlockAD: "Amap.png",
+  AppleWLOC: APP_STORE_ICON_URL,
+  AppleWLOCArg: APP_STORE_ICON_URL,
+  BilibiliBlockAD: "Bilibili.png",
+  FanQieNovelBlockAD: FANQIE_NOVEL_ICON_URL,
+  GoogleCNRedirect: "Google.png",
+  HupuBlockAD: "HUPU.png",
+  JDPriceUnlock: "JD.png",
+  KuanBlockAD: "CoolApk.png",
+  PinduoduoBlockAD: "PinDuoDuo.png",
+  PixivBlockAD: PIXIV_ICON_URL,
+  SMZDMBlockAD: "smzdm.png",
+  SpotifyUnlock: "Spotify.png",
+  TelegramToSwiftgram: "Telegram.png",
+  TelegramToTurrit: "Telegram.png",
+  WangyiyunBlockAD: "NeteaseCloudMusic.png",
+  WangyiyunBlockADArg: "NeteaseCloudMusic.png",
+  WeiboBlockAD: "Weibo.png",
+  XiaohongshuBlockAD: XIAOHONGSHU_ICON_URL,
+  XimalayaBlockAD: "Himalaya.png",
+  YouTubeBlockAD: "YouTube.png",
+  YouTubeBlockADDualSubsArg: "YouTube.png",
+  iRingoMaps: APPLE_MAPS_ICON_URL,
+  iRingoMapsArg: APPLE_MAPS_ICON_URL,
+  iRingoWeatherKit: "AppleWeather.png",
+  iRingoWeatherKitArg: "AppleWeather.png",
+  XwebBlockAD: "X.png",
+};
+const RULE_APP_ICONS = {
+  AppleCN: APP_STORE_ICON_URL,
+  AppleProxy: APP_STORE_ICON_URL,
+  Apple: APP_STORE_ICON_URL,
+  AppleServices: APP_STORE_ICON_URL,
+  AppleMusic: APP_STORE_ICON_URL,
+  Google: "Google.png",
+  YouTube: "YouTube.png",
+  Microsoft: "MicrosoftCopilot.png",
+  GitHub: "GitHub.png",
+  Telegram: "Telegram.png",
+  Telegram_NoIP: "Telegram.png",
+  Twitter: "X.png",
+  OneDrive: ONEDRIVE_ICON_URL,
+  Instagram: "Instagram.png",
+  Facebook: FACEBOOK_ICON_URL,
+  Netflix: "Netflix.png",
+  Disney: "Disney+.png",
+  Spotify: "Spotify.png",
+  TikTok: "TikTok.png",
+  Bilibili: "Bilibili.png",
+  WeChat: "Weixin.png",
+  PayPal: "PayPal.png",
+  Steam: STEAM_ICON_URL,
+};
 
 const els = {
   tabs: [...document.querySelectorAll("[data-tab]")],
@@ -16,20 +83,12 @@ const els = {
   rulesStatus: document.querySelector("#rulesStatus"),
   rulesSearch: document.querySelector("#rulesSearch"),
   rulesList: document.querySelector("#rulesList"),
-  rulePreviewTitle: document.querySelector("#rulePreviewTitle"),
-  rulePreviewDescription: document.querySelector("#rulePreviewDescription"),
-  rulePreviewCode: document.querySelector("#rulePreviewCode"),
   importSelectedRules: document.querySelector("#importSelectedRules"),
-  importRuleCurrent: document.querySelector("#importRuleCurrent"),
 
   refreshMitm: document.querySelector("#refreshMitm"),
   mitmStatus: document.querySelector("#mitmStatus"),
   mitmSearch: document.querySelector("#mitmSearch"),
   mitmList: document.querySelector("#mitmList"),
-  mitmPreviewTitle: document.querySelector("#mitmPreviewTitle"),
-  mitmPreviewDescription: document.querySelector("#mitmPreviewDescription"),
-  mitmPreviewCode: document.querySelector("#mitmPreviewCode"),
-  importMitmCurrent: document.querySelector("#importMitmCurrent"),
 
   file: document.querySelector("#file"),
   parse: document.querySelector("#parse"),
@@ -56,11 +115,10 @@ let report = null;
 let selectedBundleIDs = new Set();
 let objectUrls = [];
 let rules = [];
-let selectedRule = null;
 let selectedRuleUrls = new Set();
 let mitmScripts = [];
-let selectedMitm = null;
 let toastTimer;
+let iconManifestPromise;
 
 initTheme();
 bindEvents();
@@ -77,8 +135,6 @@ function bindEvents() {
   els.rulesSearch.addEventListener("input", renderRules);
   els.mitmSearch.addEventListener("input", renderMitm);
   els.importSelectedRules.addEventListener("click", importSelectedRules);
-  els.importRuleCurrent.addEventListener("click", () => importRuleSet(selectedRule));
-  els.importMitmCurrent.addEventListener("click", () => importMitmSet(selectedMitm));
 
   els.parse.addEventListener("click", parseSelectedFile);
   els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
@@ -97,7 +153,7 @@ function bindEvents() {
 function activateTab(name) {
   for (const tab of els.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of els.panels) panel.classList.toggle("active", panel.dataset.panel === name);
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo(0, 0);
 }
 
 async function loadRepositoryData() {
@@ -111,7 +167,7 @@ async function loadRules({ force = false } = {}) {
     const data = await fetchJson(`${COMMON_INDEX_URL}${force ? `?t=${Date.now()}` : ""}`);
     rules = (data.files || [])
       .filter((item) => item.output_path?.startsWith("common/") && item.output_path.endsWith(".arrs"))
-      .map((item, index) => ({
+      .map((item) => ({
         name: item.name,
         description: item.description || "Anywhere Routing Rule Set",
         ruleCount: item.rule_count ?? 0,
@@ -119,11 +175,10 @@ async function loadRules({ force = false } = {}) {
         sources: item.sources || [],
         path: `rules/${item.output_path}`,
         rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
-        color: colorForIndex(index),
+        iconUrl: iconUrlForRule(item.name),
       }));
     selectedRuleUrls = new Set([...selectedRuleUrls].filter((url) => rules.some((rule) => rule.rawUrl === url)));
     renderRules();
-    if (rules[0]) selectRule(rules[0]);
     els.rulesStatus.textContent = `已同步 ${rules.length} 个 rules/common 规则集`;
   } catch (error) {
     rules = [];
@@ -147,47 +202,38 @@ function renderRules() {
   const fragment = document.createDocumentFragment();
   for (const rule of filtered) {
     const checked = selectedRuleUrls.has(rule.rawUrl);
-    const row = document.createElement("div");
-    row.className = `row raw-row selectable ${selectedRule?.name === rule.name ? "active" : ""} ${checked ? "selected" : ""}`;
-    row.innerHTML = `
-      <label class="row-check" aria-label="选择 ${escapeHtml(rule.name)}">
-        <input class="row-select" type="checkbox" ${checked ? "checked" : ""}>
-      </label>
-      <button class="row-main" type="button">
-        <span class="glyph ${rule.color}">${escapeHtml(rule.name.slice(0, 2))}</span>
-        <span>
-          <b>${escapeHtml(rule.name)}</b>
-          <small>${rule.ruleCount.toLocaleString()} rules · ${escapeHtml(rule.description)}</small>
-        </span>
-        <i>预览</i>
-      </button>
-      <button class="row-copy" type="button" aria-label="导入 ${escapeHtml(rule.name)}">导入</button>
+    const card = document.createElement("article");
+    card.className = `resource-card ${checked ? "selected" : ""}`;
+    card.innerHTML = `
+      <div class="resource-card-head">
+        ${resourceIcon("globe", rule.iconUrl)}
+        <label class="resource-select" aria-label="选择 ${escapeHtml(rule.name)}">
+          <input class="row-select" type="checkbox" ${checked ? "checked" : ""}>
+        </label>
+      </div>
+      <div class="resource-card-copy">
+        <h3>${escapeHtml(rule.name)}</h3>
+        <p>${escapeHtml(rule.description)}</p>
+      </div>
+      <div class="resource-meta">
+        <span>${rule.ruleCount.toLocaleString()} 条规则</span>
+        ${rule.skippedCount ? `<span>跳过 ${rule.skippedCount}</span>` : ""}
+      </div>
+      <div class="resource-actions">
+        <a class="preview-link" href="${escapeHtml(rule.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a>
+        <button class="resource-import" type="button" aria-label="导入 ${escapeHtml(rule.name)}">一键导入</button>
+      </div>
     `;
-    row.querySelector(".row-select").addEventListener("change", (event) => {
+    card.querySelector(".row-select").addEventListener("change", (event) => {
       toggleRuleSelection(rule, event.currentTarget.checked);
     });
-    row.querySelector(".row-main").addEventListener("click", () => selectRule(rule));
-    row.querySelector(".row-copy").addEventListener("click", () => importRuleSet(rule));
-    fragment.append(row);
+    card.querySelector(".resource-import").addEventListener("click", () => importRuleSet(rule));
+    hydrateResourceIcon(card);
+    fragment.append(card);
   }
   if (filtered.length === 0) fragment.append(emptyState("没有匹配的规则集"));
   els.rulesList.append(fragment);
   updateRuleImportButtons();
-}
-
-async function selectRule(rule) {
-  selectedRule = rule;
-  renderRules();
-  updateRuleImportButtons();
-  els.rulePreviewTitle.textContent = rule.name;
-  els.rulePreviewDescription.textContent = `${rule.description} · ${rule.ruleCount.toLocaleString()} 条规则${rule.skippedCount ? ` · 跳过 ${rule.skippedCount} 条不兼容规则` : ""}`;
-  els.rulePreviewCode.textContent = `${rule.rawUrl}\n\n正在加载预览...`;
-  try {
-    const content = await fetchText(withCacheBust(rule.rawUrl));
-    els.rulePreviewCode.textContent = previewText(content, rule.rawUrl);
-  } catch {
-    els.rulePreviewCode.textContent = rule.rawUrl;
-  }
 }
 
 function toggleRuleSelection(rule, checked) {
@@ -197,7 +243,6 @@ function toggleRuleSelection(rule, checked) {
 }
 
 function updateRuleImportButtons() {
-  els.importRuleCurrent.disabled = !selectedRule;
   els.importSelectedRules.disabled = selectedRuleUrls.size === 0;
   els.importSelectedRules.textContent = selectedRuleUrls.size
     ? `导入所选 ${selectedRuleUrls.size}`
@@ -230,18 +275,19 @@ async function loadMitm({ force = false } = {}) {
     mitmScripts = mitmFiles
       .filter((item) => item.name.endsWith(".amrs"))
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((item, index) => ({
+      .map((item) => ({
         name: item.name.replace(/\.amrs$/i, ""),
+        title: item.name.replace(/\.amrs$/i, ""),
         filename: item.name,
         path: item.path,
         sha: item.sha,
         rawUrl: `${RAW_BASE}/${item.path}`,
         reject: findRejectForMitm(item, rejectFiles),
-        color: colorForIndex(index),
+        iconUrl: iconUrlForMitm(item.name.replace(/\.amrs$/i, "")),
       }));
     renderMitm();
-    if (mitmScripts[0]) selectMitm(mitmScripts[0]);
-    els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个实验性 .amrs`;
+    els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个 MITM .amrs`;
+    void hydrateMitmMetadata(mitmScripts, force);
   } catch (error) {
     mitmScripts = [];
     renderMitm();
@@ -255,52 +301,39 @@ async function loadMitm({ force = false } = {}) {
 function renderMitm() {
   const query = els.mitmSearch.value.trim().toLowerCase();
   const filtered = mitmScripts.filter((script) => {
-    const text = `${script.name} ${script.filename}`.toLowerCase();
+    const text = `${script.title} ${script.name} ${script.filename}`.toLowerCase();
     return !query || text.includes(query);
   });
 
   els.mitmList.innerHTML = "";
   const fragment = document.createDocumentFragment();
   for (const script of filtered) {
-    const row = document.createElement("div");
-    row.className = `row raw-row ${selectedMitm?.filename === script.filename ? "active" : ""}`;
-    row.innerHTML = `
-      <button class="row-main" type="button">
-        <span class="glyph ${script.color}">${escapeHtml(script.name.slice(0, 2))}</span>
-        <span>
-          <b>${escapeHtml(script.name)}</b>
-          <small>实验性 · ${escapeHtml(script.filename)}</small>
-        </span>
-        <i>预览</i>
-      </button>
-      <div class="raw-actions" aria-label="${escapeHtml(script.name)} 导入操作">
-        <button class="row-copy" type="button" aria-label="导入 ${escapeHtml(script.name)}${script.reject ? " 和配套 Reject" : ""}">导入</button>
+    const card = document.createElement("article");
+    card.className = "resource-card mitm-card";
+    card.innerHTML = `
+      <div class="resource-card-head">
+        ${resourceIcon("anywhere", script.iconUrl)}
+        <span class="resource-kind">MITM</span>
+      </div>
+      <div class="resource-card-copy">
+        <h3>${escapeHtml(script.title)}</h3>
+        <p>${script.reject ? "脚本与配套 Reject 规则将一并导入" : "实验性请求与响应改写脚本"}</p>
+      </div>
+      <div class="resource-meta">
+        <span>.amrs</span>
+        <span>${script.reject ? "含 Reject" : "脚本规则"}</span>
+      </div>
+      <div class="resource-actions">
+        <a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a>
+        <button class="resource-import" type="button" aria-label="导入 ${escapeHtml(script.title)}${script.reject ? " 和配套 Reject" : ""}">一键导入</button>
       </div>
     `;
-    row.querySelector(".row-main").addEventListener("click", () => selectMitm(script));
-    row.querySelector(".row-copy").addEventListener("click", () => importMitmSet(script));
-    fragment.append(row);
+    card.querySelector(".resource-import").addEventListener("click", () => importMitmSet(script));
+    hydrateResourceIcon(card);
+    fragment.append(card);
   }
   if (filtered.length === 0) fragment.append(emptyState("没有匹配的 MITM 脚本"));
   els.mitmList.append(fragment);
-}
-
-async function selectMitm(script) {
-  selectedMitm = script;
-  renderMitm();
-  els.importMitmCurrent.disabled = false;
-  els.mitmPreviewTitle.textContent = script.name;
-  els.mitmPreviewDescription.textContent = "实验性 MITM 规则集，仅供交流与学习。请审阅内容后再导入 Anywhere。";
-  els.mitmPreviewCode.textContent = `${script.rawUrl}\n\n正在加载预览...`;
-  try {
-    const content = await fetchText(withCacheBust(script.rawUrl));
-    const meta = parseMitmMeta(content);
-    els.mitmPreviewTitle.textContent = meta.name || script.name;
-    els.mitmPreviewDescription.textContent = `${meta.hostnameCount.toLocaleString()} 个 hostname · ${meta.ruleCount.toLocaleString()} 条规则 · 实验性功能，仅供交流与学习`;
-    els.mitmPreviewCode.textContent = previewText(content, script.rawUrl);
-  } catch {
-    els.mitmPreviewCode.textContent = script.rawUrl;
-  }
 }
 
 function importMitmSet(script) {
@@ -535,35 +568,6 @@ function openRuleSetImport(links) {
   showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
 }
 
-async function fetchText(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.text();
-}
-
-function withCacheBust(url) {
-  return `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
-}
-
-function previewText(content, rawUrl) {
-  const lines = content.split("\n").slice(0, 160).join("\n");
-  return `${rawUrl}\n\n${lines}`;
-}
-
-function parseMitmMeta(content) {
-  const lines = content.split(/\r?\n/);
-  const name = lines.find((line) => line.trim().startsWith("name = "))?.split("=").slice(1).join("=").trim();
-  const hostLine = lines.find((line) => line.trim().startsWith("hostname = "));
-  const hostnameCount = hostLine
-    ? hostLine.split("=").slice(1).join("=").split(",").map((item) => item.trim()).filter(Boolean).length
-    : 0;
-  const ruleCount = lines.filter((line) => {
-    const trimmed = line.trim();
-    return trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("name =") && !trimmed.startsWith("hostname =");
-  }).length;
-  return { name, hostnameCount, ruleCount };
-}
-
 function findRejectForMitm(item, rejectFiles) {
   const baseName = item.name.replace(/\.amrs$/i, "");
   const candidates = [
@@ -582,6 +586,149 @@ function findRejectForMitm(item, rejectFiles) {
         rawUrl: `${RAW_BASE}/${reject.path}`,
       }
     : null;
+}
+
+async function hydrateMitmMetadata(scripts, force) {
+  const [titledScripts, iconManifest] = await Promise.all([
+    Promise.all(
+      scripts.map(async (script) => ({
+        ...script,
+        title: await fetchRuleSetTitle(script.rawUrl, script.title, force),
+      })),
+    ),
+    getIconManifest().catch(() => []),
+  ]);
+  if (mitmScripts !== scripts) return;
+  mitmScripts = titledScripts.map((script) => ({
+    ...script,
+    iconUrl: script.iconUrl || findAutomaticIcon(iconManifest, [script.title, script.name]),
+  }));
+  renderMitm();
+}
+
+async function fetchRuleSetTitle(rawUrl, fallback, force) {
+  const controller = new AbortController();
+  try {
+    const response = await fetch(`${rawUrl}${force ? `?t=${Date.now()}` : ""}`, {
+      cache: force ? "no-store" : "force-cache",
+      signal: controller.signal,
+    });
+    if (!response.ok || !response.body) return fallback;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let source = "";
+    while (source.length < 4096) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      source += decoder.decode(value, { stream: true });
+      const title = readRuleSetTitle(source);
+      if (title) return title;
+    }
+    return readRuleSetTitle(source) || fallback;
+  } catch {
+    return fallback;
+  } finally {
+    controller.abort();
+  }
+}
+
+function readRuleSetTitle(source) {
+  const match = source.match(/^\s*name\s*=\s*(.+?)\s*$/im) || source.match(/^\s*#\s*NAME\s*:\s*(.+?)\s*$/im);
+  return match?.[1] || "";
+}
+
+async function getIconManifest() {
+  if (!iconManifestPromise) {
+    iconManifestPromise = fetch(ICON_TREE_URL, {
+      cache: "force-cache",
+      headers: { Accept: "application/vnd.github+json" },
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((data) => (data.tree || [])
+        .filter((item) => item.type === "blob" && /^App_icon\/(?:120px|1024px)\/.+\.(?:png|jpe?g|webp)$/i.test(item.path))
+        .map((item) => ({
+          key: normalizeIconKey(item.path.split("/").pop().replace(/\.[^.]+$/, "")),
+          url: `${ICON_RAW_BASE}/${item.path}`,
+          small: item.path.startsWith("App_icon/120px/"),
+        }))
+        .filter((item) => item.key),
+      )
+      .catch((error) => {
+        iconManifestPromise = undefined;
+        throw error;
+      });
+  }
+  return iconManifestPromise;
+}
+
+function findAutomaticIcon(manifest, values) {
+  const keys = values.flatMap(iconSearchKeys);
+  let match = null;
+  for (const icon of manifest) {
+    for (const key of keys) {
+      const minimumLength = /[\u3400-\u9fff]/.test(key) ? 2 : 4;
+      if (key.length < minimumLength) continue;
+      let score = 0;
+      if (icon.key === key) score = 1000;
+      else if (icon.key.includes(key)) score = 500 + key.length;
+      else if (key.includes(icon.key) && icon.key.length >= minimumLength) score = 300 + icon.key.length;
+      if (!score) continue;
+      score += icon.small ? 10 : 0;
+      if (!match || score > match.score) match = { score, url: icon.url };
+    }
+  }
+  return match?.url || "";
+}
+
+function iconSearchKeys(value) {
+  const full = normalizeIconKey(value);
+  const concise = normalizeIconKey(String(value)
+    .replace(/blockad|adblock|priceunlock|unlock|redirect|anywhere|mitm|ruleset|script|arg/gi, "")
+    .replace(/去广告|去水印|增强版|基础版|参数版|净化合并版|广告修正|定位修改|跳转|解锁/g, ""));
+  return [...new Set([full, concise].filter(Boolean))];
+}
+
+function normalizeIconKey(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function iconUrlForMitm(name) {
+  return iconUrlFromMapping(MITM_APP_ICONS[name]);
+}
+
+function iconUrlForRule(name) {
+  return iconUrlFromMapping(RULE_APP_ICONS[name]);
+}
+
+function iconUrlFromMapping(value) {
+  if (!value) return "";
+  return value.startsWith("https://") ? value : `${ICON_BASE}/${value}`;
+}
+
+function resourceIcon(fallback, iconUrl = "") {
+  const fallbackMarkup = fallback === "globe"
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.8 12h16.4M12 3.5c2.1 2.4 3.1 5.2 3.1 8.5s-1 6.1-3.1 8.5c-2.1-2.4-3.1-5.2-3.1-8.5s1-6.1 3.1-8.5Z"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 18.5 12 4l7 14.5-3.6-1.8H8.6L5 18.5Z"/><path d="M9.2 14.2h5.6"/></svg>`;
+  if (!iconUrl) {
+    return `<span class="resource-icon fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span>`;
+  }
+  return `<span class="resource-icon app-icon"><img src="${iconUrl}" alt="" width="52" height="52" decoding="async"><span class="fallback-icon ${fallback}" hidden aria-hidden="true">${fallbackMarkup}</span></span>`;
+}
+
+function hydrateResourceIcon(container) {
+  const image = container.querySelector(".app-icon img");
+  if (!image) return;
+  image.addEventListener("error", () => {
+    image.hidden = true;
+    image.nextElementSibling.hidden = false;
+  });
 }
 
 function setBusy(busy) {
@@ -608,10 +755,6 @@ function emptyState(text) {
   empty.className = "empty-state";
   empty.textContent = text;
   return empty;
-}
-
-function colorForIndex(index) {
-  return ["purple", "blue", "red", "orange", "pink", "green", "indigo", "gray"][index % 8];
 }
 
 function escapeHtml(value) {

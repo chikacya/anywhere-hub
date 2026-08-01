@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Anywhere-hub</title>
     <link rel="stylesheet" href="./styles.css">
-    <script type="module" src="./app.js?v=20260625-mitm-icons"></script>
+    <script type="module" src="./app.js?v=20260802-card-grid"></script>
   </head>
   <body>
     <main class="shell">
@@ -45,35 +45,22 @@
             </div>
           </div>
 
-          <div class="content-grid">
-            <section class="native-card list-panel">
-              <div class="card-toolbar">
-                <div>
-                  <h2>常用规则集</h2>
-                  <p id="rulesStatus">正在同步 GitHub...</p>
-                </div>
-                <div class="list-tools">
-                  <label class="search-box">
-                    <input id="rulesSearch" type="search" autocomplete="off" placeholder="搜索规则集">
-                  </label>
-                  <button id="importSelectedRules" class="ghost" type="button" disabled>导入所选</button>
-                </div>
+          <section class="collection-shell" aria-label="常用规则集列表">
+            <div class="collection-toolbar">
+              <div>
+                <h2>选择并导入</h2>
+                <p id="rulesStatus">正在同步 GitHub...</p>
               </div>
-              <div id="rulesList" class="rows"></div>
-            </section>
-
-            <section class="native-card preview-panel">
-              <div class="preview-head">
-                <div>
-                  <p class="section-kicker">Preview</p>
-                  <h2 id="rulePreviewTitle">等待选择</h2>
-                </div>
-                <button id="importRuleCurrent" class="copy-button" type="button" disabled>导入当前</button>
+              <div class="list-tools">
+                <label class="search-box">
+                  <span class="sr-only">搜索规则集</span>
+                  <input id="rulesSearch" type="search" autocomplete="off" placeholder="搜索规则集">
+                </label>
+                <button id="importSelectedRules" class="ghost" type="button" disabled>导入所选</button>
               </div>
-              <p id="rulePreviewDescription">选择一个规则集后，这里会显示说明、规则数量和导入链接。</p>
-              <pre id="rulePreviewCode">raw.githubusercontent.com/chikacya/anywhere-rules/main/rules/common/...</pre>
-            </section>
-          </div>
+            </div>
+            <div id="rulesList" class="resource-grid"></div>
+          </section>
         </section>
 
         <section class="panel" data-panel="converter">
@@ -87,7 +74,9 @@
 
           <section class="native-card upload-panel" aria-label="转换工具">
             <div class="upload-copy">
-              <span class="glyph blue large">⇧</span>
+              <span class="tool-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4m0 0 4 4m-4-4L8 8M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+              </span>
               <div>
                 <h2>选择 `.ndjson` 文件</h2>
                 <p>本地读取 · 不上传 · 无第三方统计</p>
@@ -169,39 +158,21 @@
             </div>
           </div>
 
-          <div class="experiment-banner">
-            <b>实验性功能</b>
-            <span>MITM 脚本仅供交流与学习。使用前请自行审阅规则和脚本内容，风险自负。</span>
-          </div>
-
-          <div class="content-grid">
-            <section class="native-card list-panel">
-              <div class="card-toolbar">
-                <div>
-                  <h2>MITM 脚本</h2>
-                  <p id="mitmStatus">正在同步 GitHub...</p>
-                </div>
-                <div class="list-tools">
-                  <label class="search-box">
-                    <input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本">
-                  </label>
-                </div>
+          <section class="collection-shell" aria-label="MITM 脚本列表">
+            <div class="collection-toolbar">
+              <div>
+                <h2>选择脚本并导入</h2>
+                <p id="mitmStatus">正在同步 GitHub...</p>
               </div>
-              <div id="mitmList" class="rows"></div>
-            </section>
-
-            <section class="native-card preview-panel">
-              <div class="preview-head">
-                <div>
-                  <p class="section-kicker">Experimental preview</p>
-                  <h2 id="mitmPreviewTitle">等待选择</h2>
-                </div>
-                <button id="importMitmCurrent" class="copy-button" type="button" disabled>导入当前</button>
+              <div class="list-tools">
+                <label class="search-box">
+                  <span class="sr-only">搜索 MITM 脚本</span>
+                  <input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本">
+                </label>
               </div>
-              <p id="mitmPreviewDescription">选择一个 `.amrs` 后，这里会显示 MITM 规则摘要和导入链接。</p>
-              <pre id="mitmPreviewCode">raw.githubusercontent.com/chikacya/anywhere-rules/main/mitm/...</pre>
-            </section>
-          </div>
+            </div>
+            <div id="mitmList" class="resource-grid"></div>
+          </section>
         </section>
       </section>
     </main>
