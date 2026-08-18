@@ -5,73 +5,6 @@ import { createZip } from "./lib/zip.mjs";
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
 const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
-const ICON_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/120px";
-const OTHER_ICON_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main/Other_icon/120px";
-const LARGE_ICON_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/1024px";
-const ICON_RAW_BASE = "https://raw.githubusercontent.com/luestr/IconResource/main";
-const ICON_TREE_URL = "https://api.github.com/repos/luestr/IconResource/git/trees/main?recursive=1";
-const APP_STORE_ICON_URL = `${OTHER_ICON_BASE}/AppStore.png`;
-const XIAOHONGSHU_ICON_URL = `${LARGE_ICON_BASE}/${encodeURIComponent("小红书.png")}`;
-const FANQIE_NOVEL_ICON_URL = `${LARGE_ICON_BASE}/${encodeURIComponent("番茄小说.png")}`;
-const PIXIV_ICON_URL = `${LARGE_ICON_BASE}/pixiv.png`;
-const APPLE_MAPS_ICON_URL = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/67/05/f8/6705f876-0db2-711d-0d42-524ef6432165/maps-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/120x120bb.jpg";
-const ONEDRIVE_ICON_URL = "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/68/bd/d6/68bdd6c8-0699-a2e2-ec51-3e0c5333798a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/120x120bb.jpg";
-const FACEBOOK_ICON_URL = "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f9/16/25/f91625c5-c207-b2db-9994-0cf496af8154/Icon-Production-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/120x120bb.jpg";
-const STEAM_ICON_URL = `${LARGE_ICON_BASE}/Steam_Mobile.png`;
-const MITM_APP_ICONS = {
-  AmapBlockAD: "Amap.png",
-  AppleWLOC: APP_STORE_ICON_URL,
-  AppleWLOCArg: APP_STORE_ICON_URL,
-  BilibiliBlockAD: "Bilibili.png",
-  FanQieNovelBlockAD: FANQIE_NOVEL_ICON_URL,
-  GoogleCNRedirect: "Google.png",
-  HupuBlockAD: "HUPU.png",
-  JDPriceUnlock: "JD.png",
-  KuanBlockAD: "CoolApk.png",
-  PinduoduoBlockAD: "PinDuoDuo.png",
-  PixivBlockAD: PIXIV_ICON_URL,
-  SMZDMBlockAD: "smzdm.png",
-  SpotifyUnlock: "Spotify.png",
-  TelegramToSwiftgram: "Telegram.png",
-  TelegramToTurrit: "Telegram.png",
-  WangyiyunBlockAD: "NeteaseCloudMusic.png",
-  WangyiyunBlockADArg: "NeteaseCloudMusic.png",
-  WeiboBlockAD: "Weibo.png",
-  XiaohongshuBlockAD: XIAOHONGSHU_ICON_URL,
-  XimalayaBlockAD: "Himalaya.png",
-  YouTubeBlockAD: "YouTube.png",
-  YouTubeBlockADDualSubsArg: "YouTube.png",
-  iRingoMaps: APPLE_MAPS_ICON_URL,
-  iRingoMapsArg: APPLE_MAPS_ICON_URL,
-  iRingoWeatherKit: "AppleWeather.png",
-  iRingoWeatherKitArg: "AppleWeather.png",
-  XwebBlockAD: "X.png",
-};
-const RULE_APP_ICONS = {
-  AppleCN: APP_STORE_ICON_URL,
-  AppleProxy: APP_STORE_ICON_URL,
-  Apple: APP_STORE_ICON_URL,
-  AppleServices: APP_STORE_ICON_URL,
-  AppleMusic: APP_STORE_ICON_URL,
-  Google: "Google.png",
-  YouTube: "YouTube.png",
-  Microsoft: "MicrosoftCopilot.png",
-  GitHub: "GitHub.png",
-  Telegram: "Telegram.png",
-  Telegram_NoIP: "Telegram.png",
-  Twitter: "X.png",
-  OneDrive: ONEDRIVE_ICON_URL,
-  Instagram: "Instagram.png",
-  Facebook: FACEBOOK_ICON_URL,
-  Netflix: "Netflix.png",
-  Disney: "Disney+.png",
-  Spotify: "Spotify.png",
-  TikTok: "TikTok.png",
-  Bilibili: "Bilibili.png",
-  WeChat: "Weixin.png",
-  PayPal: "PayPal.png",
-  Steam: STEAM_ICON_URL,
-};
 
 const els = {
   tabs: [...document.querySelectorAll("[data-tab]")],
@@ -118,7 +51,8 @@ let rules = [];
 let selectedRuleUrls = new Set();
 let mitmScripts = [];
 let toastTimer;
-let iconManifestPromise;
+let ruleMetadataPromise;
+let mitmMetadataPromise;
 
 initTheme();
 bindEvents();
@@ -153,6 +87,8 @@ function bindEvents() {
 function activateTab(name) {
   for (const tab of els.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of els.panels) panel.classList.toggle("active", panel.dataset.panel === name);
+  if (name === "rules") void hydrateRuleMetadata(rules);
+  if (name === "mitm") void hydrateMitmMetadata(mitmScripts);
   window.scrollTo(0, 0);
 }
 
@@ -169,17 +105,20 @@ async function loadRules({ force = false } = {}) {
       .filter((item) => item.output_path?.startsWith("common/") && item.output_path.endsWith(".arrs"))
       .map((item) => ({
         name: item.name,
+        title: item.name,
         description: item.description || "Anywhere Routing Rule Set",
         ruleCount: item.rule_count ?? 0,
         skippedCount: item.skipped_count ?? 0,
         sources: item.sources || [],
         path: `rules/${item.output_path}`,
         rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
-        iconUrl: iconUrlForRule(item.name),
+        iconUrl: "",
       }));
     selectedRuleUrls = new Set([...selectedRuleUrls].filter((url) => rules.some((rule) => rule.rawUrl === url)));
+    ruleMetadataPromise = undefined;
     renderRules();
     els.rulesStatus.textContent = `已同步 ${rules.length} 个 rules/common 规则集`;
+    if (isTabActive("rules")) void hydrateRuleMetadata(rules, force);
   } catch (error) {
     rules = [];
     selectedRuleUrls.clear();
@@ -194,7 +133,7 @@ async function loadRules({ force = false } = {}) {
 function renderRules() {
   const query = els.rulesSearch.value.trim().toLowerCase();
   const filtered = rules.filter((rule) => {
-    const text = `${rule.name} ${rule.description} ${rule.path}`.toLowerCase();
+    const text = `${rule.title} ${rule.name} ${rule.description} ${rule.path}`.toLowerCase();
     return !query || text.includes(query);
   });
 
@@ -204,6 +143,7 @@ function renderRules() {
     const checked = selectedRuleUrls.has(rule.rawUrl);
     const card = document.createElement("article");
     card.className = `resource-card ${checked ? "selected" : ""}`;
+    card.dataset.resourceUrl = rule.rawUrl;
     card.innerHTML = `
       <div class="resource-card-head">
         ${resourceIcon("globe", rule.iconUrl)}
@@ -212,7 +152,7 @@ function renderRules() {
         </label>
       </div>
       <div class="resource-card-copy">
-        <h3>${escapeHtml(rule.name)}</h3>
+        <h3>${escapeHtml(rule.title)}</h3>
         <p>${escapeHtml(rule.description)}</p>
       </div>
       <div class="resource-meta">
@@ -221,7 +161,7 @@ function renderRules() {
       </div>
       <div class="resource-actions">
         <a class="preview-link" href="${escapeHtml(rule.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a>
-        <button class="resource-import" type="button" aria-label="导入 ${escapeHtml(rule.name)}">一键导入</button>
+        <button class="resource-import" type="button" aria-label="导入 ${escapeHtml(rule.title)}">一键导入</button>
       </div>
     `;
     card.querySelector(".row-select").addEventListener("change", (event) => {
@@ -283,11 +223,12 @@ async function loadMitm({ force = false } = {}) {
         sha: item.sha,
         rawUrl: `${RAW_BASE}/${item.path}`,
         reject: findRejectForMitm(item, rejectFiles),
-        iconUrl: iconUrlForMitm(item.name.replace(/\.amrs$/i, "")),
+        iconUrl: "",
       }));
+    mitmMetadataPromise = undefined;
     renderMitm();
     els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个 MITM .amrs`;
-    void hydrateMitmMetadata(mitmScripts, force);
+    if (isTabActive("mitm")) void hydrateMitmMetadata(mitmScripts, force);
   } catch (error) {
     mitmScripts = [];
     renderMitm();
@@ -310,6 +251,7 @@ function renderMitm() {
   for (const script of filtered) {
     const card = document.createElement("article");
     card.className = "resource-card mitm-card";
+    card.dataset.resourceUrl = script.rawUrl;
     card.innerHTML = `
       <div class="resource-card-head">
         ${resourceIcon("anywhere", script.iconUrl)}
@@ -588,26 +530,75 @@ function findRejectForMitm(item, rejectFiles) {
     : null;
 }
 
-async function hydrateMitmMetadata(scripts, force) {
-  const [titledScripts, iconManifest] = await Promise.all([
-    Promise.all(
-      scripts.map(async (script) => ({
-        ...script,
-        title: await fetchRuleSetTitle(script.rawUrl, script.title, force),
-      })),
-    ),
-    getIconManifest().catch(() => []),
-  ]);
-  if (mitmScripts !== scripts) return;
-  mitmScripts = titledScripts.map((script) => ({
-    ...script,
-    iconUrl: script.iconUrl || findAutomaticIcon(iconManifest, [script.title, script.name]),
-  }));
-  renderMitm();
+function isTabActive(name) {
+  return els.panels.some((panel) => panel.dataset.panel === name && panel.classList.contains("active"));
 }
 
-async function fetchRuleSetTitle(rawUrl, fallback, force) {
+function hydrateRuleMetadata(ruleSets, force = false) {
+  if (ruleMetadataPromise || ruleSets.length === 0) return ruleMetadataPromise;
+  ruleMetadataPromise = hydrateResourceMetadata({
+    resources: ruleSets,
+    currentResources: () => rules,
+    list: els.rulesList,
+    fallbackIcon: "globe",
+    force,
+  }).finally(() => {
+    if (rules === ruleSets) ruleMetadataPromise = undefined;
+  });
+  return ruleMetadataPromise;
+}
+
+function hydrateMitmMetadata(scripts, force = false) {
+  if (mitmMetadataPromise || scripts.length === 0) return mitmMetadataPromise;
+  mitmMetadataPromise = hydrateResourceMetadata({
+    resources: scripts,
+    currentResources: () => mitmScripts,
+    list: els.mitmList,
+    fallbackIcon: "anywhere",
+    force,
+  }).finally(() => {
+    if (mitmScripts === scripts) mitmMetadataPromise = undefined;
+  });
+  return mitmMetadataPromise;
+}
+
+async function hydrateResourceMetadata({ resources, currentResources, list, fallbackIcon, force }) {
+  const pendingResources = resources
+    .map((resource, index) => ({ resource, index }))
+    .filter(({ resource }) => !resource.metadataLoaded);
+
+  await mapWithConcurrency(pendingResources, async ({ resource, index }) => {
+    const metadata = await fetchRuleSetMetadata(resource.rawUrl, resource, force);
+    if (currentResources() !== resources) return;
+    const hydratedResource = { ...resources[index], ...metadata, metadataLoaded: true };
+    resources[index] = hydratedResource;
+    updateResourceCard(list, hydratedResource, fallbackIcon);
+  });
+}
+
+function updateResourceCard(list, resource, fallbackIcon) {
+  const card = [...list.querySelectorAll("[data-resource-url]")]
+    .find((element) => element.dataset.resourceUrl === resource.rawUrl);
+  if (!card) return;
+
+  const icon = card.querySelector(".resource-icon");
+  if (icon) {
+    const template = document.createElement("template");
+    template.innerHTML = resourceIcon(fallbackIcon, resource.iconUrl).trim();
+    icon.replaceWith(template.content.firstElementChild);
+    hydrateResourceIcon(card);
+  }
+
+  card.querySelector("h3").textContent = resource.title;
+  const importButton = card.querySelector(".resource-import");
+  if (importButton) {
+    importButton.setAttribute("aria-label", `导入 ${resource.title}${resource.reject ? " 和配套 Reject" : ""}`);
+  }
+}
+
+async function fetchRuleSetMetadata(rawUrl, fallback, force) {
   const controller = new AbortController();
+  let reader;
   try {
     const response = await fetch(`${rawUrl}${force ? `?t=${Date.now()}` : ""}`, {
       cache: force ? "no-store" : "force-cache",
@@ -615,101 +606,47 @@ async function fetchRuleSetTitle(rawUrl, fallback, force) {
     });
     if (!response.ok || !response.body) return fallback;
 
-    const reader = response.body.getReader();
+    reader = response.body.getReader();
     const decoder = new TextDecoder();
     let source = "";
-    while (source.length < 4096) {
+    while (source.length < 256 * 1024) {
       const { done, value } = await reader.read();
       if (done) break;
       source += decoder.decode(value, { stream: true });
-      const title = readRuleSetTitle(source);
-      if (title) return title;
+      const metadata = readRuleSetMetadata(source);
+      if (metadata.title && metadata.iconUrl) return { ...fallback, ...metadata };
     }
-    return readRuleSetTitle(source) || fallback;
+    return { ...fallback, ...readRuleSetMetadata(source) };
   } catch {
     return fallback;
   } finally {
+    if (reader) void reader.cancel().catch(() => {});
     controller.abort();
   }
 }
 
-function readRuleSetTitle(source) {
-  const match = source.match(/^\s*name\s*=\s*(.+?)\s*$/im) || source.match(/^\s*#\s*NAME\s*:\s*(.+?)\s*$/im);
-  return match?.[1] || "";
+function readRuleSetMetadata(source) {
+  const title = source.match(/^\s*name\s*=\s*(.+?)\s*$/im)?.[1]
+    || source.match(/^\s*#\s*NAME\s*:\s*(.+?)\s*$/im)?.[1]
+    || "";
+  const iconBase64 = source.match(/^\s*icon-light\s*=\s*([A-Za-z0-9+/=]+)\s*$/im)?.[1] || "";
+  return {
+    ...(title ? { title } : {}),
+    ...(iconBase64 ? { iconUrl: `data:image/png;base64,${iconBase64}` } : {}),
+  };
 }
 
-async function getIconManifest() {
-  if (!iconManifestPromise) {
-    iconManifestPromise = fetch(ICON_TREE_URL, {
-      cache: "force-cache",
-      headers: { Accept: "application/vnd.github+json" },
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-      })
-      .then((data) => (data.tree || [])
-        .filter((item) => item.type === "blob" && /^App_icon\/(?:120px|1024px)\/.+\.(?:png|jpe?g|webp)$/i.test(item.path))
-        .map((item) => ({
-          key: normalizeIconKey(item.path.split("/").pop().replace(/\.[^.]+$/, "")),
-          url: `${ICON_RAW_BASE}/${item.path}`,
-          small: item.path.startsWith("App_icon/120px/"),
-        }))
-        .filter((item) => item.key),
-      )
-      .catch((error) => {
-        iconManifestPromise = undefined;
-        throw error;
-      });
-  }
-  return iconManifestPromise;
-}
-
-function findAutomaticIcon(manifest, values) {
-  const keys = values.flatMap(iconSearchKeys);
-  let match = null;
-  for (const icon of manifest) {
-    for (const key of keys) {
-      const minimumLength = /[\u3400-\u9fff]/.test(key) ? 2 : 4;
-      if (key.length < minimumLength) continue;
-      let score = 0;
-      if (icon.key === key) score = 1000;
-      else if (icon.key.includes(key)) score = 500 + key.length;
-      else if (key.includes(icon.key) && icon.key.length >= minimumLength) score = 300 + icon.key.length;
-      if (!score) continue;
-      score += icon.small ? 10 : 0;
-      if (!match || score > match.score) match = { score, url: icon.url };
+async function mapWithConcurrency(items, mapper, limit = 6) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await mapper(items[currentIndex]);
     }
-  }
-  return match?.url || "";
-}
-
-function iconSearchKeys(value) {
-  const full = normalizeIconKey(value);
-  const concise = normalizeIconKey(String(value)
-    .replace(/blockad|adblock|priceunlock|unlock|redirect|anywhere|mitm|ruleset|script|arg/gi, "")
-    .replace(/去广告|去水印|增强版|基础版|参数版|净化合并版|广告修正|定位修改|跳转|解锁/g, ""));
-  return [...new Set([full, concise].filter(Boolean))];
-}
-
-function normalizeIconKey(value) {
-  return String(value || "")
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]/gu, "");
-}
-
-function iconUrlForMitm(name) {
-  return iconUrlFromMapping(MITM_APP_ICONS[name]);
-}
-
-function iconUrlForRule(name) {
-  return iconUrlFromMapping(RULE_APP_ICONS[name]);
-}
-
-function iconUrlFromMapping(value) {
-  if (!value) return "";
-  return value.startsWith("https://") ? value : `${ICON_BASE}/${value}`;
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 function resourceIcon(fallback, iconUrl = "") {
@@ -719,16 +656,53 @@ function resourceIcon(fallback, iconUrl = "") {
   if (!iconUrl) {
     return `<span class="resource-icon fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span>`;
   }
-  return `<span class="resource-icon app-icon"><img src="${iconUrl}" alt="" width="52" height="52" decoding="async"><span class="fallback-icon ${fallback}" hidden aria-hidden="true">${fallbackMarkup}</span></span>`;
+  return `<span class="resource-icon app-icon"><img src="${iconUrl}" alt="" width="52" height="52" decoding="sync"><span class="fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span></span>`;
 }
 
 function hydrateResourceIcon(container) {
   const image = container.querySelector(".app-icon img");
   if (!image) return;
+  const reveal = () => {
+    try {
+      normalizeResourceIcon(image);
+    } catch {
+      // Keep the source icon at its original scale if its pixels cannot be read.
+    }
+    image.classList.add("ready");
+  };
+  image.addEventListener("load", reveal, { once: true });
   image.addEventListener("error", () => {
     image.hidden = true;
-    image.nextElementSibling.hidden = false;
   });
+  if (image.complete && image.naturalWidth > 0) reveal();
+}
+
+function normalizeResourceIcon(image) {
+  const { naturalWidth: width, naturalHeight: height } = image;
+  if (!width || !height) return;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return;
+  context.drawImage(image, 0, 0);
+  const { data } = context.getImageData(0, 0, width, height);
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4 + 3] < 16) continue;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top) return;
+  const contentFill = Math.min((right - left + 1) / width, (bottom - top + 1) / height);
+  if (contentFill < 0.8) image.style.setProperty("--icon-scale", String(Math.min(1.08, 0.84 / contentFill)));
 }
 
 function setBusy(busy) {

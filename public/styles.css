@@ -300,8 +300,11 @@ h3 { font-size: 17px; line-height: 1.25; }
   overflow: hidden;
   border-radius: var(--radius-icon);
 }
-.resource-icon.app-icon { border: 1px solid var(--glass-line); background: var(--glass-strong); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62); }
-.resource-icon.app-icon img { width: 100%; height: 100%; object-fit: cover; }
+.resource-icon.app-icon { position: relative; border: 1px solid var(--glass-line); background: var(--glass-strong); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62); }
+.resource-icon.app-icon img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transform: scale(var(--icon-scale, 1)); }
+.resource-icon.app-icon img.ready { opacity: 1; }
+.resource-icon.app-icon img.ready + .fallback-icon { display: none; }
+.resource-icon.app-icon .fallback-icon { position: absolute; inset: 0; }
 .fallback-icon { display: grid; width: 100%; height: 100%; place-items: center; }
 .fallback-icon svg { width: 26px; height: 26px; }
 .fallback-icon.globe { background: #e8f3ff; color: #1769e0; }
