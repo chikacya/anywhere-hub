@@ -6,6 +6,7 @@
   "scripts": {
     "test": "/Users/hailong/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node tests/run-tests.mjs",
     "serve": "/Users/hailong/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m http.server 4173 --directory public",
+    "sync:resource-metadata": "node scripts/sync-resource-metadata.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

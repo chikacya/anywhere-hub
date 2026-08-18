@@ -5,6 +5,8 @@ import { createZip } from "./lib/zip.mjs";
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
 const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
+const RESOURCE_METADATA_URL = "./resource-metadata.json";
+const METADATA_READ_BYTES = 48 * 1024;
 
 const els = {
   tabs: [...document.querySelectorAll("[data-tab]")],
@@ -53,6 +55,7 @@ let mitmScripts = [];
 let toastTimer;
 let ruleMetadataPromise;
 let mitmMetadataPromise;
+let embeddedMetadataPromise;
 
 initTheme();
 bindEvents();
@@ -541,6 +544,7 @@ function hydrateRuleMetadata(ruleSets, force = false) {
     currentResources: () => rules,
     list: els.rulesList,
     fallbackIcon: "globe",
+    render: renderRules,
     force,
   }).finally(() => {
     if (rules === ruleSets) ruleMetadataPromise = undefined;
@@ -555,6 +559,7 @@ function hydrateMitmMetadata(scripts, force = false) {
     currentResources: () => mitmScripts,
     list: els.mitmList,
     fallbackIcon: "anywhere",
+    render: renderMitm,
     force,
   }).finally(() => {
     if (mitmScripts === scripts) mitmMetadataPromise = undefined;
@@ -562,7 +567,25 @@ function hydrateMitmMetadata(scripts, force = false) {
   return mitmMetadataPromise;
 }
 
-async function hydrateResourceMetadata({ resources, currentResources, list, fallbackIcon, force }) {
+async function hydrateResourceMetadata({ resources, currentResources, list, fallbackIcon, render, force }) {
+  const embeddedMetadata = await getEmbeddedResourceMetadata();
+  if (currentResources() !== resources) return;
+
+  let renderedEmbeddedMetadata = false;
+  for (let index = 0; index < resources.length; index += 1) {
+    const resource = resources[index];
+    const metadata = embeddedMetadata[resource.path];
+    if (!metadata) continue;
+    resources[index] = {
+      ...resource,
+      ...(metadata.title ? { title: metadata.title } : {}),
+      ...(metadata.icon ? { iconUrl: `data:image/png;base64,${metadata.icon}` } : {}),
+      metadataLoaded: true,
+    };
+    renderedEmbeddedMetadata = true;
+  }
+  if (renderedEmbeddedMetadata) render();
+
   const pendingResources = resources
     .map((resource, index) => ({ resource, index }))
     .filter(({ resource }) => !resource.metadataLoaded);
@@ -597,31 +620,15 @@ function updateResourceCard(list, resource, fallbackIcon) {
 }
 
 async function fetchRuleSetMetadata(rawUrl, fallback, force) {
-  const controller = new AbortController();
-  let reader;
   try {
     const response = await fetch(`${rawUrl}${force ? `?t=${Date.now()}` : ""}`, {
       cache: force ? "no-store" : "force-cache",
-      signal: controller.signal,
+      headers: { Range: `bytes=0-${METADATA_READ_BYTES - 1}` },
     });
-    if (!response.ok || !response.body) return fallback;
-
-    reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let source = "";
-    while (source.length < 256 * 1024) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      source += decoder.decode(value, { stream: true });
-      const metadata = readRuleSetMetadata(source);
-      if (metadata.title && metadata.iconUrl) return { ...fallback, ...metadata };
-    }
-    return { ...fallback, ...readRuleSetMetadata(source) };
+    if (!response.ok) return fallback;
+    return { ...fallback, ...readRuleSetMetadata(await response.text()) };
   } catch {
     return fallback;
-  } finally {
-    if (reader) void reader.cancel().catch(() => {});
-    controller.abort();
   }
 }
 
@@ -636,7 +643,23 @@ function readRuleSetMetadata(source) {
   };
 }
 
-async function mapWithConcurrency(items, mapper, limit = 6) {
+async function getEmbeddedResourceMetadata() {
+  if (!embeddedMetadataPromise) {
+    embeddedMetadataPromise = fetch(RESOURCE_METADATA_URL, { cache: "force-cache" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((data) => data.resources || {})
+      .catch(() => {
+        embeddedMetadataPromise = undefined;
+        return {};
+      });
+  }
+  return embeddedMetadataPromise;
+}
+
+async function mapWithConcurrency(items, mapper, limit = 4) {
   const results = new Array(items.length);
   let nextIndex = 0;
   const worker = async () => {
@@ -656,53 +679,18 @@ function resourceIcon(fallback, iconUrl = "") {
   if (!iconUrl) {
     return `<span class="resource-icon fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span>`;
   }
-  return `<span class="resource-icon app-icon"><img src="${iconUrl}" alt="" width="52" height="52" decoding="sync"><span class="fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span></span>`;
+  return `<span class="resource-icon app-icon"><img src="${iconUrl}" alt="" width="52" height="52" decoding="async"><span class="fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span></span>`;
 }
 
 function hydrateResourceIcon(container) {
   const image = container.querySelector(".app-icon img");
   if (!image) return;
-  const reveal = () => {
-    try {
-      normalizeResourceIcon(image);
-    } catch {
-      // Keep the source icon at its original scale if its pixels cannot be read.
-    }
-    image.classList.add("ready");
-  };
+  const reveal = () => image.classList.add("ready");
   image.addEventListener("load", reveal, { once: true });
   image.addEventListener("error", () => {
     image.hidden = true;
   });
   if (image.complete && image.naturalWidth > 0) reveal();
-}
-
-function normalizeResourceIcon(image) {
-  const { naturalWidth: width, naturalHeight: height } = image;
-  if (!width || !height) return;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return;
-  context.drawImage(image, 0, 0);
-  const { data } = context.getImageData(0, 0, width, height);
-  let left = width;
-  let top = height;
-  let right = -1;
-  let bottom = -1;
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      if (data[(y * width + x) * 4 + 3] < 16) continue;
-      left = Math.min(left, x);
-      top = Math.min(top, y);
-      right = Math.max(right, x);
-      bottom = Math.max(bottom, y);
-    }
-  }
-  if (right < left || bottom < top) return;
-  const contentFill = Math.min((right - left + 1) / width, (bottom - top + 1) / height);
-  if (contentFill < 0.8) image.style.setProperty("--icon-scale", String(Math.min(1.08, 0.84 / contentFill)));
 }
 
 function setBusy(busy) {
