@@ -4,21 +4,45 @@ import { createZip } from "./lib/zip.mjs";
 
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
 const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
+const BK7_INDEX_URL = `${RAW_BASE}/rules/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
-const RESOURCE_METADATA_URL = "./resource-metadata.json";
+const METADATA_URLS = {
+  common: "./resource-metadata-common.json",
+  mitm: "./resource-metadata-mitm.json",
+};
 const METADATA_READ_BYTES = 48 * 1024;
+const BK7_PAGE_SIZE = 72;
+const MAX_IMPORT_LINKS = 48;
+const BK7_SELECTION_KEY = "anywhere-hub-bk7-selection";
 
 const els = {
   tabs: [...document.querySelectorAll("[data-tab]")],
   panels: [...document.querySelectorAll("[data-panel]")],
+  libraryTabs: [...document.querySelectorAll("[data-library]")],
+  libraryPanels: [...document.querySelectorAll("[data-library-panel]")],
   toast: document.querySelector("#toast"),
   themeToggle: document.querySelector("#themeToggle"),
+  themeMeta: document.querySelector('meta[name="theme-color"]'),
+  installHint: document.querySelector("#installHint"),
+  dismissInstallHint: document.querySelector("#dismissInstallHint"),
 
   refreshRules: document.querySelector("#refreshRules"),
   rulesStatus: document.querySelector("#rulesStatus"),
   rulesSearch: document.querySelector("#rulesSearch"),
   rulesList: document.querySelector("#rulesList"),
   importSelectedRules: document.querySelector("#importSelectedRules"),
+
+  refreshBk7: document.querySelector("#refreshBk7"),
+  bk7Status: document.querySelector("#bk7Status"),
+  bk7Search: document.querySelector("#bk7Search"),
+  bk7List: document.querySelector("#bk7List"),
+  bk7SelectVisible: document.querySelector("#bk7SelectVisible"),
+  bk7ClearSelection: document.querySelector("#bk7ClearSelection"),
+  bk7LoadMore: document.querySelector("#bk7LoadMore"),
+  bk7Sentinel: document.querySelector("#bk7Sentinel"),
+  bk7BatchBar: document.querySelector("#bk7BatchBar"),
+  bk7SelectedCount: document.querySelector("#bk7SelectedCount"),
+  importSelectedBk7: document.querySelector("#importSelectedBk7"),
 
   refreshMitm: document.querySelector("#refreshMitm"),
   mitmStatus: document.querySelector("#mitmStatus"),
@@ -52,26 +76,43 @@ let objectUrls = [];
 let rules = [];
 let selectedRuleUrls = new Set();
 let mitmScripts = [];
+let bk7Files = [];
+let bk7Groups = [];
+let bk7VisibleCount = BK7_PAGE_SIZE;
+let selectedBk7Urls = readStoredBk7Selection();
+let expandedBk7Groups = new Set();
 let toastTimer;
 let ruleMetadataPromise;
 let mitmMetadataPromise;
-let embeddedMetadataPromise;
+let bk7LoadPromise;
+let bk7RenderFrame;
+let bk7Observer;
+const embeddedMetadataPromises = new Map();
 
 initTheme();
 bindEvents();
+initPwa();
+activateTab(readInitialTab(), { updateHash: false });
 loadRepositoryData();
 
 function bindEvents() {
-  for (const tab of els.tabs) {
-    tab.addEventListener("click", () => activateTab(tab.dataset.tab));
-  }
+  for (const tab of els.tabs) tab.addEventListener("click", () => activateTab(tab.dataset.tab));
+  for (const tab of els.libraryTabs) tab.addEventListener("click", () => activateLibrary(tab.dataset.library));
 
   els.themeToggle.addEventListener("click", toggleTheme);
+  els.dismissInstallHint.addEventListener("click", dismissInstallHint);
   els.refreshRules.addEventListener("click", () => loadRules({ force: true }));
   els.refreshMitm.addEventListener("click", () => loadMitm({ force: true }));
   els.rulesSearch.addEventListener("input", renderRules);
   els.mitmSearch.addEventListener("input", renderMitm);
   els.importSelectedRules.addEventListener("click", importSelectedRules);
+
+  els.refreshBk7.addEventListener("click", () => loadBk7({ force: true }));
+  els.bk7Search.addEventListener("input", scheduleRenderBk7);
+  els.bk7SelectVisible.addEventListener("click", selectFilteredBk7);
+  els.bk7ClearSelection.addEventListener("click", clearBk7Selection);
+  els.bk7LoadMore.addEventListener("click", loadMoreBk7);
+  els.importSelectedBk7.addEventListener("click", importSelectedBk7);
 
   els.parse.addEventListener("click", parseSelectedFile);
   els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
@@ -85,14 +126,53 @@ function bindEvents() {
     renderApps();
   });
   els.appSearch.addEventListener("input", renderApps);
+  window.addEventListener("hashchange", () => activateTab(readInitialTab(), { updateHash: false }));
 }
 
-function activateTab(name) {
-  for (const tab of els.tabs) tab.classList.toggle("active", tab.dataset.tab === name);
-  for (const panel of els.panels) panel.classList.toggle("active", panel.dataset.panel === name);
-  if (name === "rules") void hydrateRuleMetadata(rules);
-  if (name === "mitm") void hydrateMitmMetadata(mitmScripts);
+function readInitialTab() {
+  const hash = window.location.hash.slice(1);
+  return ["library", "privacy", "mitm"].includes(hash) ? hash : "library";
+}
+
+function activateTab(name, { updateHash = true } = {}) {
+  for (const tab of els.tabs) {
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle("active", active);
+    if (active) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  }
+  for (const panel of els.panels) {
+    const active = panel.dataset.panel === name;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  }
+  if (updateHash && window.location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
   window.scrollTo(0, 0);
+  if (name === "library") {
+    void hydrateRuleMetadata(rules);
+    if (activeLibrary() === "bk7") void loadBk7();
+  }
+  if (name === "mitm") void hydrateMitmMetadata(mitmScripts);
+}
+
+function activeLibrary() {
+  return els.libraryTabs.find((tab) => tab.classList.contains("active"))?.dataset.library || "common";
+}
+
+function activateLibrary(name) {
+  for (const tab of els.libraryTabs) {
+    const active = tab.dataset.library === name;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  }
+  for (const panel of els.libraryPanels) {
+    const active = panel.dataset.libraryPanel === name;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  }
+  window.scrollTo(0, 0);
+  if (name === "common") void hydrateRuleMetadata(rules);
+  if (name === "bk7") void loadBk7();
 }
 
 async function loadRepositoryData() {
@@ -103,7 +183,7 @@ async function loadRules({ force = false } = {}) {
   setLoading(els.refreshRules, true, "同步中");
   els.rulesStatus.textContent = "正在同步 GitHub main/rules/common...";
   try {
-    const data = await fetchJson(`${COMMON_INDEX_URL}${force ? `?t=${Date.now()}` : ""}`);
+    const data = await fetchJson(`${COMMON_INDEX_URL}${force ? `?t=${Date.now()}` : ""}`, { force });
     rules = (data.files || [])
       .filter((item) => item.output_path?.startsWith("common/") && item.output_path.endsWith(".arrs"))
       .map((item) => ({
@@ -112,7 +192,6 @@ async function loadRules({ force = false } = {}) {
         description: item.description || "Anywhere Routing Rule Set",
         ruleCount: item.rule_count ?? 0,
         skippedCount: item.skipped_count ?? 0,
-        sources: item.sources || [],
         path: `rules/${item.output_path}`,
         rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
         iconUrl: "",
@@ -120,8 +199,8 @@ async function loadRules({ force = false } = {}) {
     selectedRuleUrls = new Set([...selectedRuleUrls].filter((url) => rules.some((rule) => rule.rawUrl === url)));
     ruleMetadataPromise = undefined;
     renderRules();
-    els.rulesStatus.textContent = `已同步 ${rules.length} 个 rules/common 规则集`;
-    if (isTabActive("rules")) void hydrateRuleMetadata(rules, force);
+    els.rulesStatus.textContent = `已同步 ${rules.length} 个常用规则集`;
+    if (activeLibrary() === "common") void hydrateRuleMetadata(rules, force);
   } catch (error) {
     rules = [];
     selectedRuleUrls.clear();
@@ -135,47 +214,28 @@ async function loadRules({ force = false } = {}) {
 
 function renderRules() {
   const query = els.rulesSearch.value.trim().toLowerCase();
-  const filtered = rules.filter((rule) => {
-    const text = `${rule.title} ${rule.name} ${rule.description} ${rule.path}`.toLowerCase();
-    return !query || text.includes(query);
-  });
-
-  els.rulesList.innerHTML = "";
+  const filtered = rules.filter((rule) => `${rule.title} ${rule.name} ${rule.description} ${rule.path}`.toLowerCase().includes(query));
   const fragment = document.createDocumentFragment();
   for (const rule of filtered) {
     const checked = selectedRuleUrls.has(rule.rawUrl);
     const card = document.createElement("article");
     card.className = `resource-card ${checked ? "selected" : ""}`;
-    card.dataset.resourceUrl = rule.rawUrl;
     card.innerHTML = `
       <div class="resource-card-head">
         ${resourceIcon("globe", rule.iconUrl)}
-        <label class="resource-select" aria-label="选择 ${escapeHtml(rule.name)}">
-          <input class="row-select" type="checkbox" ${checked ? "checked" : ""}>
-        </label>
+        <label class="resource-select" aria-label="选择 ${escapeHtml(rule.title)}"><input class="row-select" type="checkbox" ${checked ? "checked" : ""}></label>
       </div>
-      <div class="resource-card-copy">
-        <h3>${escapeHtml(rule.title)}</h3>
-        <p>${escapeHtml(rule.description)}</p>
-      </div>
-      <div class="resource-meta">
-        <span>${rule.ruleCount.toLocaleString()} 条规则</span>
-        ${rule.skippedCount ? `<span>跳过 ${rule.skippedCount}</span>` : ""}
-      </div>
-      <div class="resource-actions">
-        <a class="preview-link" href="${escapeHtml(rule.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a>
-        <button class="resource-import" type="button" aria-label="导入 ${escapeHtml(rule.title)}">一键导入</button>
-      </div>
+      <div class="resource-card-copy"><h3>${escapeHtml(rule.title)}</h3><p>${escapeHtml(rule.description)}</p></div>
+      <div class="resource-meta"><span>${rule.ruleCount.toLocaleString()} 条规则</span>${rule.skippedCount ? `<span>跳过 ${rule.skippedCount}</span>` : ""}</div>
+      <div class="resource-actions"><a class="preview-link" href="${escapeHtml(rule.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="导入 ${escapeHtml(rule.title)}">一键导入</button></div>
     `;
-    card.querySelector(".row-select").addEventListener("change", (event) => {
-      toggleRuleSelection(rule, event.currentTarget.checked);
-    });
-    card.querySelector(".resource-import").addEventListener("click", () => importRuleSet(rule));
+    card.querySelector(".row-select").addEventListener("change", (event) => toggleRuleSelection(rule, event.currentTarget.checked));
+    card.querySelector(".resource-import").addEventListener("click", () => openRuleSetImport([rule.rawUrl]));
     hydrateResourceIcon(card);
     fragment.append(card);
   }
-  if (filtered.length === 0) fragment.append(emptyState("没有匹配的规则集"));
-  els.rulesList.append(fragment);
+  if (!filtered.length) fragment.append(emptyState("没有匹配的规则集"));
+  els.rulesList.replaceChildren(fragment);
   updateRuleImportButtons();
 }
 
@@ -187,34 +247,226 @@ function toggleRuleSelection(rule, checked) {
 
 function updateRuleImportButtons() {
   els.importSelectedRules.disabled = selectedRuleUrls.size === 0;
-  els.importSelectedRules.textContent = selectedRuleUrls.size
-    ? `导入所选 ${selectedRuleUrls.size}`
-    : "导入所选";
-}
-
-function importRuleSet(rule) {
-  if (!rule) return;
-  openRuleSetImport([rule.rawUrl]);
+  els.importSelectedRules.textContent = selectedRuleUrls.size ? `导入所选 ${selectedRuleUrls.size}` : "导入所选";
 }
 
 function importSelectedRules() {
-  const selected = rules
-    .filter((rule) => selectedRuleUrls.has(rule.rawUrl))
-    .map((rule) => rule.rawUrl);
-  openRuleSetImport(selected);
+  openRuleSetImport(rules.filter((rule) => selectedRuleUrls.has(rule.rawUrl)).map((rule) => rule.rawUrl));
+}
+
+async function loadBk7({ force = false } = {}) {
+  if (bk7LoadPromise && !force) return bk7LoadPromise;
+  setLoading(els.refreshBk7, true, "同步中");
+  els.bk7Status.textContent = "正在读取 Blackmatrix7 目录索引...";
+  bk7LoadPromise = fetchJson(`${BK7_INDEX_URL}${force ? `?t=${Date.now()}` : ""}`, { force })
+    .then((data) => {
+      bk7Files = (data.files || []).map((item) => ({
+        name: item.name,
+        sourcePath: item.source_path,
+        outputFile: item.output_path.split("/").pop(),
+        path: `rules/${item.output_path}`,
+        rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
+        ruleCount: item.rule_count ?? 0,
+        skippedCount: item.skipped_count ?? 0,
+        updated: item.upstream_updated || "",
+      }));
+      const availableUrls = new Set(bk7Files.map((file) => file.rawUrl));
+      selectedBk7Urls = new Set([...selectedBk7Urls].filter((url) => availableUrls.has(url)));
+      bk7Groups = groupBk7Files(bk7Files);
+      bk7VisibleCount = BK7_PAGE_SIZE;
+      els.bk7Status.textContent = `已同步 ${bk7Files.length.toLocaleString()} 个文件，${bk7Groups.length.toLocaleString()} 个目录。`;
+      renderBk7();
+      observeBk7Sentinel();
+    })
+    .catch((error) => {
+      bk7Files = [];
+      bk7Groups = [];
+      els.bk7Status.textContent = `目录同步失败：${error.message}`;
+      renderBk7();
+      showToast("BK7 目录同步失败，请稍后重试");
+    })
+    .finally(() => {
+      setLoading(els.refreshBk7, false, "同步目录");
+      bk7LoadPromise = undefined;
+    });
+  return bk7LoadPromise;
+}
+
+function groupBk7Files(files) {
+  const groups = new Map();
+  for (const file of files) {
+    const [, , directory = file.name] = file.path.split("/");
+    if (!groups.has(directory)) groups.set(directory, { key: directory, files: [] });
+    groups.get(directory).files.push(file);
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      files: group.files.sort((a, b) => a.path.localeCompare(b.path)),
+      ruleCount: group.files.reduce((total, file) => total + file.ruleCount, 0),
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function filteredBk7Groups() {
+  const query = els.bk7Search.value.trim().toLowerCase();
+  if (!query) return bk7Groups;
+  return bk7Groups.filter((group) => {
+    const searchable = `${group.key} ${group.files.map((file) => `${file.name} ${file.path} ${file.sourcePath}`).join(" ")}`.toLowerCase();
+    return searchable.includes(query);
+  });
+}
+
+function scheduleRenderBk7() {
+  bk7VisibleCount = BK7_PAGE_SIZE;
+  cancelAnimationFrame(bk7RenderFrame);
+  bk7RenderFrame = requestAnimationFrame(renderBk7);
+}
+
+function renderBk7() {
+  const filtered = filteredBk7Groups();
+  const visibleGroups = filtered.slice(0, bk7VisibleCount);
+  const fragment = document.createDocumentFragment();
+  for (const group of visibleGroups) fragment.append(createBk7Group(group));
+  if (!visibleGroups.length) fragment.append(emptyState(bk7Groups.length ? "没有匹配的 BK7 规则集" : "目录加载后将在这里显示"));
+  els.bk7List.replaceChildren(fragment);
+  els.bk7LoadMore.hidden = visibleGroups.length >= filtered.length;
+  updateBk7Controls(filtered.length);
+}
+
+function createBk7Group(group) {
+  const selectedCount = group.files.filter((file) => selectedBk7Urls.has(file.rawUrl)).length;
+  const expanded = expandedBk7Groups.has(group.key);
+  const groupElement = document.createElement("article");
+  groupElement.className = `bk7-group ${selectedCount ? "selected" : ""}`;
+  groupElement.innerHTML = `
+    <div class="bk7-group-row">
+      <label class="bk7-check" aria-label="选择 ${escapeHtml(group.key)} 的全部 ${group.files.length} 个规则文件"><input type="checkbox" ${selectedCount === group.files.length ? "checked" : ""}></label>
+      <button class="bk7-open" type="button" aria-expanded="${expanded}" aria-label="${expanded ? "收起" : "展开"} ${escapeHtml(group.key)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="bk7-group-copy"><b>${escapeHtml(group.key)}</b><span>${group.files.length} 个变体 · ${formatRuleCount(group.ruleCount)} 条规则</span></span>
+      </button>
+      <span class="bk7-rule-count">${formatRuleCount(group.ruleCount)} 条</span>
+      <a class="button secondary" href="${escapeHtml(group.files[0].rawUrl)}" target="_blank" rel="noreferrer">Raw</a>
+    </div>
+  `;
+  const checkbox = groupElement.querySelector("input");
+  checkbox.indeterminate = selectedCount > 0 && selectedCount < group.files.length;
+  checkbox.addEventListener("change", () => toggleBk7Group(group, checkbox.checked));
+  groupElement.querySelector(".bk7-open").addEventListener("click", () => {
+    if (expandedBk7Groups.has(group.key)) expandedBk7Groups.delete(group.key);
+    else expandedBk7Groups.add(group.key);
+    renderBk7();
+  });
+  if (expanded) groupElement.append(createBk7Variants(group));
+  return groupElement;
+}
+
+function createBk7Variants(group) {
+  const variants = document.createElement("div");
+  variants.className = "bk7-variants";
+  variants.innerHTML = `<p class="bk7-variants-note">每项均可单独导入：上方为 Anywhere 导入文件名，下方为 Blackmatrix7 上游来源。</p>`;
+  for (const file of group.files) {
+    const variant = document.createElement("div");
+    variant.className = "bk7-variant";
+    variant.innerHTML = `
+      <label aria-label="选择 ${escapeHtml(file.outputFile)}"><input type="checkbox" ${selectedBk7Urls.has(file.rawUrl) ? "checked" : ""}></label>
+      <span class="bk7-variant-copy"><b>${escapeHtml(file.outputFile)}</b><span>${escapeHtml(describeBk7Variant(file))} · ${formatRuleCount(file.ruleCount)} 条规则${file.skippedCount ? ` · 跳过 ${file.skippedCount}` : ""}</span><small>来源：${escapeHtml(file.sourcePath)}</small></span>
+      <a href="${escapeHtml(file.rawUrl)}" target="_blank" rel="noreferrer">Raw</a>
+    `;
+    variant.querySelector("input").addEventListener("change", (event) => toggleBk7File(file, event.currentTarget.checked));
+    variants.append(variant);
+  }
+  return variants;
+}
+
+function describeBk7Variant(file) {
+  const name = file.outputFile.replace(/\.arrs$/i, "").toLowerCase();
+  const notes = [];
+  if (/(^|_)all(?:_|$)/.test(name)) notes.push("全量组合");
+  if (/(^|_)no_resolve(?:_|$)/.test(name)) notes.push("不进行 DNS 解析");
+  else if (/(^|_)resolve(?:_|$)/.test(name)) notes.push("启用 DNS 解析");
+  if (/(^|_)domain(?:_|$)/.test(name)) notes.push("仅域名匹配");
+  if (/(^|_)(?:ip|cidr)(?:_|$)/.test(name)) notes.push("IP / CIDR 匹配");
+  if (/(^|_)reject(?:_|$)/.test(name)) notes.push("拦截策略");
+  return notes.join(" · ") || "上游原始变体";
+}
+
+function toggleBk7Group(group, checked) {
+  for (const file of group.files) {
+    if (checked) selectedBk7Urls.add(file.rawUrl);
+    else selectedBk7Urls.delete(file.rawUrl);
+  }
+  persistBk7Selection();
+  renderBk7();
+}
+
+function toggleBk7File(file, checked) {
+  if (checked) selectedBk7Urls.add(file.rawUrl);
+  else selectedBk7Urls.delete(file.rawUrl);
+  persistBk7Selection();
+  renderBk7();
+}
+
+function selectFilteredBk7() {
+  for (const group of filteredBk7Groups()) for (const file of group.files) selectedBk7Urls.add(file.rawUrl);
+  persistBk7Selection();
+  renderBk7();
+}
+
+function clearBk7Selection() {
+  selectedBk7Urls.clear();
+  persistBk7Selection();
+  renderBk7();
+}
+
+function loadMoreBk7() {
+  bk7VisibleCount += BK7_PAGE_SIZE;
+  renderBk7();
+}
+
+function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
+  const hasSelection = selectedBk7Urls.size > 0;
+  els.bk7SelectVisible.disabled = filteredCount === 0;
+  els.bk7ClearSelection.disabled = !hasSelection;
+  els.importSelectedBk7.disabled = !hasSelection;
+  els.bk7BatchBar.hidden = !hasSelection;
+  els.bk7SelectedCount.textContent = `已选 ${selectedBk7Urls.size.toLocaleString()} 项`;
+  els.importSelectedBk7.textContent = selectedBk7Urls.size > MAX_IMPORT_LINKS ? `分批导入 ${selectedBk7Urls.size}` : `批量导入 ${selectedBk7Urls.size}`;
+}
+
+function importSelectedBk7() {
+  const selected = bk7Files.filter((file) => selectedBk7Urls.has(file.rawUrl));
+  if (!selected.length) return;
+  const batch = selected.slice(0, MAX_IMPORT_LINKS);
+  if (selected.length > MAX_IMPORT_LINKS) {
+    const confirmed = window.confirm(`一次导入最多 ${MAX_IMPORT_LINKS} 项，以避免 iOS 自定义链接过长。现在先导入前 ${MAX_IMPORT_LINKS} 项，其余 ${selected.length - MAX_IMPORT_LINKS} 项会保留在当前选择中。`);
+    if (!confirmed) return;
+    for (const file of batch) selectedBk7Urls.delete(file.rawUrl);
+    persistBk7Selection();
+    renderBk7();
+  }
+  openRuleSetImport(batch.map((file) => file.rawUrl));
+}
+
+function observeBk7Sentinel() {
+  if (!("IntersectionObserver" in window) || bk7Observer) return;
+  bk7Observer = new IntersectionObserver((entries) => {
+    const [entry] = entries;
+    if (!entry.isIntersecting || activeLibrary() !== "bk7") return;
+    const count = filteredBk7Groups().length;
+    if (bk7VisibleCount < count) loadMoreBk7();
+  }, { rootMargin: "520px 0px" });
+  bk7Observer.observe(els.bk7Sentinel);
 }
 
 async function loadMitm({ force = false } = {}) {
   setLoading(els.refreshMitm, true, "同步中");
   els.mitmStatus.textContent = "正在同步 GitHub main/mitm...";
   try {
-    const data = await fetchJson(`${MITM_API_URL}${force ? `&t=${Date.now()}` : ""}`);
+    const data = await fetchJson(`${MITM_API_URL}${force ? `&t=${Date.now()}` : ""}`, { force });
     const mitmFiles = data.filter((item) => item.type === "file");
-    const rejectFiles = new Map(
-      mitmFiles
-        .filter((item) => item.name.endsWith(".arrs"))
-        .map((item) => [item.name.toLowerCase(), item]),
-    );
+    const rejectFiles = new Map(mitmFiles.filter((item) => item.name.endsWith(".arrs")).map((item) => [item.name.toLowerCase(), item]));
     mitmScripts = mitmFiles
       .filter((item) => item.name.endsWith(".amrs"))
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -223,15 +475,14 @@ async function loadMitm({ force = false } = {}) {
         title: item.name.replace(/\.amrs$/i, ""),
         filename: item.name,
         path: item.path,
-        sha: item.sha,
         rawUrl: `${RAW_BASE}/${item.path}`,
         reject: findRejectForMitm(item, rejectFiles),
         iconUrl: "",
       }));
     mitmMetadataPromise = undefined;
     renderMitm();
-    els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个 MITM .amrs`;
-    if (isTabActive("mitm")) void hydrateMitmMetadata(mitmScripts, force);
+    els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个 MITM 脚本`;
+    if (readInitialTab() === "mitm") void hydrateMitmMetadata(mitmScripts, force);
   } catch (error) {
     mitmScripts = [];
     renderMitm();
@@ -244,48 +495,25 @@ async function loadMitm({ force = false } = {}) {
 
 function renderMitm() {
   const query = els.mitmSearch.value.trim().toLowerCase();
-  const filtered = mitmScripts.filter((script) => {
-    const text = `${script.title} ${script.name} ${script.filename}`.toLowerCase();
-    return !query || text.includes(query);
-  });
-
-  els.mitmList.innerHTML = "";
+  const filtered = mitmScripts.filter((script) => `${script.title} ${script.name} ${script.filename}`.toLowerCase().includes(query));
   const fragment = document.createDocumentFragment();
   for (const script of filtered) {
     const card = document.createElement("article");
-    card.className = "resource-card mitm-card";
-    card.dataset.resourceUrl = script.rawUrl;
+    card.className = "resource-card";
     card.innerHTML = `
-      <div class="resource-card-head">
-        ${resourceIcon("anywhere", script.iconUrl)}
-        <span class="resource-kind">MITM</span>
-      </div>
-      <div class="resource-card-copy">
-        <h3>${escapeHtml(script.title)}</h3>
-        <p>${script.reject ? "脚本与配套 Reject 规则将一并导入" : "实验性请求与响应改写脚本"}</p>
-      </div>
-      <div class="resource-meta">
-        <span>.amrs</span>
-        <span>${script.reject ? "含 Reject" : "脚本规则"}</span>
-      </div>
-      <div class="resource-actions">
-        <a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a>
-        <button class="resource-import" type="button" aria-label="导入 ${escapeHtml(script.title)}${script.reject ? " 和配套 Reject" : ""}">一键导入</button>
-      </div>
+      <div class="resource-card-head">${resourceIcon("anywhere", script.iconUrl)}<span class="resource-kind">MITM</span></div>
+      <div class="resource-card-copy"><h3>${escapeHtml(script.title)}</h3><p>${script.reject ? "脚本与配套 Reject 规则将一并导入" : "请求与响应改写脚本"}</p></div>
+      <div class="resource-meta"><span>.amrs</span><span>${script.reject ? "含 Reject" : "脚本规则"}</span></div>
+      <div class="resource-actions"><a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="导入 ${escapeHtml(script.title)}">一键导入</button></div>
     `;
-    card.querySelector(".resource-import").addEventListener("click", () => importMitmSet(script));
+    card.querySelector(".resource-import").addEventListener("click", () => {
+      openRuleSetImport([script.rawUrl, script.reject?.rawUrl].filter(Boolean));
+    });
     hydrateResourceIcon(card);
     fragment.append(card);
   }
-  if (filtered.length === 0) fragment.append(emptyState("没有匹配的 MITM 脚本"));
-  els.mitmList.append(fragment);
-}
-
-function importMitmSet(script) {
-  if (!script) return;
-  const links = [script.rawUrl];
-  if (script.reject?.rawUrl) links.push(script.reject.rawUrl);
-  openRuleSetImport(links);
+  if (!filtered.length) fragment.append(emptyState("没有匹配的 MITM 脚本"));
+  els.mitmList.replaceChildren(fragment);
 }
 
 async function parseSelectedFile() {
@@ -294,7 +522,6 @@ async function parseSelectedFile() {
     setStatus("请选择 iOS App 隐私报告 .ndjson 文件。");
     return;
   }
-
   setBusy(true);
   setStatus("正在本地解析报告...");
   els.progress.value = 0;
@@ -312,9 +539,7 @@ async function parseSelectedFile() {
     const { type, progress, report: nextReport, message } = event.data || {};
     if (type === "progress") {
       els.progress.value = Math.min(95, Math.floor(progress.lineCount / 1000));
-      setStatus(
-        `已读取 ${progress.lineCount.toLocaleString()} 行，网络记录 ${progress.networkCount.toLocaleString()} 条，代理容器目标 ${progress.proxyTargetCount.toLocaleString()} 个。`,
-      );
+      setStatus(`已读取 ${progress.lineCount.toLocaleString()} 行，网络记录 ${progress.networkCount.toLocaleString()} 条，代理容器目标 ${progress.proxyTargetCount.toLocaleString()} 个。`);
     }
     if (type === "done") {
       worker.terminate();
@@ -335,18 +560,11 @@ async function parseSelectedFile() {
     setBusy(false);
     setStatus(`解析失败：${event.message || "Worker 运行异常"}`);
   };
-
   worker.postMessage({
     file,
     options: {
-      filters: {
-        fakeIp: els.filterFake.checked,
-        privateIp: els.filterPrivate.checked,
-        localIp: els.filterLocal.checked,
-      },
-      attribution: {
-        allowSharedExact: els.allowShared.checked,
-      },
+      filters: { fakeIp: els.filterFake.checked, privateIp: els.filterPrivate.checked, localIp: els.filterLocal.checked },
+      attribution: { allowSharedExact: els.allowShared.checked },
     },
   });
 }
@@ -354,17 +572,13 @@ async function parseSelectedFile() {
 function renderReport() {
   if (!report) return;
   const summary = report.attributionSummary;
-  setStatus(
-    `完成：${report.networkCount.toLocaleString()} 条网络记录，${report.apps.length.toLocaleString()} 个应用，${summary.unresolvedCount.toLocaleString()} 个代理容器目标待确认。`,
-  );
-
+  setStatus(`完成：${report.networkCount.toLocaleString()} 条网络记录，${report.apps.length.toLocaleString()} 个应用，${summary.unresolvedCount.toLocaleString()} 个代理容器目标待确认。`);
   els.stats.innerHTML = `
     <div><strong>${report.networkCount.toLocaleString()}</strong><span>网络记录</span></div>
     <div><strong>${report.apps.length.toLocaleString()}</strong><span>应用</span></div>
     <div><strong>${(report.proxyTargets?.length || 0).toLocaleString()}</strong><span>代理容器目标</span></div>
     <div><strong>${summary.unresolvedCount.toLocaleString()}</strong><span>待确认</span></div>
   `;
-
   els.conversionResults.hidden = false;
   els.unresolvedPanel.hidden = !report.unresolvedProxyTargets?.length;
   renderApps();
@@ -373,26 +587,17 @@ function renderReport() {
 
 function renderApps() {
   if (!report) return;
-  els.apps.innerHTML = "";
-  const fragment = document.createDocumentFragment();
   const apps = getFilteredApps();
-
+  const fragment = document.createDocumentFragment();
   for (const app of apps) {
     const row = document.createElement("label");
     row.className = "app-row";
-    row.innerHTML = `
-      <input type="checkbox" ${selectedBundleIDs.has(app.bundleID) ? "checked" : ""}>
-      <span class="app-main">
-        <span class="app-name">${escapeHtml(displayBundleName(app.bundleID))}</span>
-        <span class="app-meta">${app.count.toLocaleString()} 条规则候选 · hits ${app.hits.toLocaleString()}</span>
-      </span>
-      <button type="button" class="ghost">预览</button>
-    `;
+    row.innerHTML = `<input type="checkbox" ${selectedBundleIDs.has(app.bundleID) ? "checked" : ""}><span class="app-main"><span class="app-name">${escapeHtml(displayBundleName(app.bundleID))}</span><span class="app-meta">${app.count.toLocaleString()} 条规则候选 · hits ${app.hits.toLocaleString()}</span></span><button type="button" class="button quiet">预览</button>`;
     const checkbox = row.querySelector("input");
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) selectedBundleIDs.add(app.bundleID);
       else selectedBundleIDs.delete(app.bundleID);
-      updateButtons();
+      updateDownloadButtons();
     });
     row.querySelector("button").addEventListener("click", (event) => {
       event.preventDefault();
@@ -400,46 +605,34 @@ function renderApps() {
     });
     fragment.append(row);
   }
-
-  if (apps.length === 0) fragment.append(emptyState("没有匹配的应用"));
-
-  els.apps.append(fragment);
-  updateButtons();
+  if (!apps.length) fragment.append(emptyState("没有匹配的应用"));
+  els.apps.replaceChildren(fragment);
+  updateDownloadButtons();
   if (apps[0]) showPreview(apps[0].bundleID);
   else els.preview.value = "";
 }
 
 function renderUnresolved() {
   if (!report) return;
-  const targets = report.unresolvedProxyTargets || [];
-  els.unresolved.innerHTML = targets
-    .slice(0, 80)
-    .map((target) => {
-      const candidates = target.candidateApps?.length
-        ? `候选：${target.candidateApps.slice(0, 3).join(", ")}`
-        : "未找到可靠候选";
-      return `<li><code>${escapeHtml(target.value)}</code><span>${target.hits.toLocaleString()} hits · ${escapeHtml(target.attribution)} · ${escapeHtml(candidates)}</span></li>`;
-    })
-    .join("");
+  els.unresolved.innerHTML = (report.unresolvedProxyTargets || []).slice(0, 80).map((target) => {
+    const candidates = target.candidateApps?.length ? `候选：${target.candidateApps.slice(0, 3).join(", ")}` : "未找到可靠候选";
+    return `<li><code>${escapeHtml(target.value)}</code><span>${target.hits.toLocaleString()} hits · ${escapeHtml(target.attribution)} · ${escapeHtml(candidates)}</span></li>`;
+  }).join("");
 }
 
 function showPreview(bundleID) {
   const app = report?.apps.find((item) => item.bundleID === bundleID);
   if (!app) return;
-  const files = buildFilesForApp(app);
-  els.preview.value = files[0]?.content.split("\n").slice(0, 180).join("\n") || "";
+  els.preview.value = buildFilesForApp(app)[0]?.content.split("\n").slice(0, 180).join("\n") || "";
 }
 
 function downloadArtifact(bundleIDs) {
-  if (!report || bundleIDs.length === 0) return;
+  if (!report || !bundleIDs.length) return;
   revokeUrls();
   const files = buildFilesForBundles(bundleIDs);
-  if (files.length === 0) return;
-
+  if (!files.length) return;
   const singleFile = files.length === 1;
-  const blob = singleFile
-    ? new Blob([files[0].content], { type: "text/plain;charset=utf-8" })
-    : createZip(files);
+  const blob = singleFile ? new Blob([files[0].content], { type: "text/plain;charset=utf-8" }) : createZip(files);
   const url = URL.createObjectURL(blob);
   objectUrls.push(url);
   const link = document.createElement("a");
@@ -449,17 +642,14 @@ function downloadArtifact(bundleIDs) {
 }
 
 function buildFilesForBundles(bundleIDs) {
-  const files = [];
-  for (const bundleID of bundleIDs) {
+  return bundleIDs.flatMap((bundleID) => {
     const app = report.apps.find((item) => item.bundleID === bundleID);
-    if (app) files.push(...buildFilesForApp(app));
-  }
-  return files;
+    return app ? buildFilesForApp(app) : [];
+  });
 }
 
 function buildFilesForApp(app) {
-  const rules = targetsToRules(app.targets);
-  return buildArrsFiles(readableRuleSetName(app), rules, {
+  return buildArrsFiles(readableRuleSetName(app), targetsToRules(app.targets), {
     bundleID: app.bundleID,
     generatedAt: new Date().toISOString(),
     note: "Generated locally in browser; proxy-container traffic is attributed conservatively.",
@@ -475,148 +665,62 @@ function readableRuleSetName(app) {
 function getFilteredApps() {
   if (!report) return [];
   const query = els.appSearch.value.trim().toLowerCase();
-  if (!query) return report.apps;
-  return report.apps.filter((app) => {
-    const display = displayBundleName(app.bundleID).toLowerCase();
-    return display.includes(query) || app.bundleID.toLowerCase().includes(query);
-  });
+  return report.apps.filter((app) => !query || `${displayBundleName(app.bundleID)} ${app.bundleID}`.toLowerCase().includes(query));
 }
 
-function updateButtons() {
+function updateDownloadButtons() {
   const hasSelection = selectedBundleIDs.size > 0;
   els.downloadSelected.disabled = !hasSelection;
   els.downloadAll.disabled = !report?.apps.length;
   if (!report) return;
-
-  if (!hasSelection) {
-    els.downloadSelected.textContent = "下载所选";
-  } else {
-    const count = buildFilesForBundles([...selectedBundleIDs]).length;
-    els.downloadSelected.textContent = count === 1 ? "下载所选 .arrs" : "下载所选 ZIP";
-  }
-
-  const allCount = buildFilesForBundles(report.apps.map((app) => app.bundleID)).length;
-  els.downloadAll.textContent = allCount === 1 ? "下载全部 .arrs" : "下载全部 ZIP";
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
-}
-
-function openRuleSetImport(links) {
-  const validLinks = links.filter(Boolean);
-  if (validLinks.length === 0) return;
-  const query = validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&");
-  window.location.href = `anywhere://add-rule-set?${query}`;
-  showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
+  const selectedCount = buildFilesForBundles([...selectedBundleIDs]).length;
+  const totalCount = buildFilesForBundles(report.apps.map((app) => app.bundleID)).length;
+  els.downloadSelected.textContent = selectedCount === 1 ? "下载所选 .arrs" : "下载所选 ZIP";
+  els.downloadAll.textContent = totalCount === 1 ? "下载全部 .arrs" : "下载全部 ZIP";
 }
 
 function findRejectForMitm(item, rejectFiles) {
   const baseName = item.name.replace(/\.amrs$/i, "");
-  const candidates = [
-    `${baseName}Reject.arrs`,
-    `${baseName.replace(/(?:BlockAD|PriceUnlock|Unlock)$/i, "")}Reject.arrs`,
-  ];
-  const reject = candidates
-    .map((name) => rejectFiles.get(name.toLowerCase()))
-    .find(Boolean);
-
-  return reject
-    ? {
-        name: reject.name,
-        filename: reject.name,
-        path: reject.path,
-        rawUrl: `${RAW_BASE}/${reject.path}`,
-      }
-    : null;
-}
-
-function isTabActive(name) {
-  return els.panels.some((panel) => panel.dataset.panel === name && panel.classList.contains("active"));
+  const candidates = [`${baseName}Reject.arrs`, `${baseName.replace(/(?:BlockAD|PriceUnlock|Unlock)$/i, "")}Reject.arrs`];
+  const reject = candidates.map((name) => rejectFiles.get(name.toLowerCase())).find(Boolean);
+  return reject ? { rawUrl: `${RAW_BASE}/${reject.path}` } : null;
 }
 
 function hydrateRuleMetadata(ruleSets, force = false) {
-  if (ruleMetadataPromise || ruleSets.length === 0) return ruleMetadataPromise;
-  ruleMetadataPromise = hydrateResourceMetadata({
-    resources: ruleSets,
-    currentResources: () => rules,
-    list: els.rulesList,
-    fallbackIcon: "globe",
-    render: renderRules,
-    force,
-  }).finally(() => {
+  if (ruleMetadataPromise || !ruleSets.length) return ruleMetadataPromise;
+  ruleMetadataPromise = hydrateResourceMetadata(ruleSets, "common", force).finally(() => {
     if (rules === ruleSets) ruleMetadataPromise = undefined;
   });
   return ruleMetadataPromise;
 }
 
 function hydrateMitmMetadata(scripts, force = false) {
-  if (mitmMetadataPromise || scripts.length === 0) return mitmMetadataPromise;
-  mitmMetadataPromise = hydrateResourceMetadata({
-    resources: scripts,
-    currentResources: () => mitmScripts,
-    list: els.mitmList,
-    fallbackIcon: "anywhere",
-    render: renderMitm,
-    force,
-  }).finally(() => {
+  if (mitmMetadataPromise || !scripts.length) return mitmMetadataPromise;
+  mitmMetadataPromise = hydrateResourceMetadata(scripts, "mitm", force).finally(() => {
     if (mitmScripts === scripts) mitmMetadataPromise = undefined;
   });
   return mitmMetadataPromise;
 }
 
-async function hydrateResourceMetadata({ resources, currentResources, list, fallbackIcon, render, force }) {
-  const embeddedMetadata = await getEmbeddedResourceMetadata();
-  if (currentResources() !== resources) return;
-
-  let renderedEmbeddedMetadata = false;
+async function hydrateResourceMetadata(resources, type, force) {
+  const metadataByPath = await getEmbeddedResourceMetadata(type);
+  const current = type === "common" ? () => rules : () => mitmScripts;
+  if (current() !== resources) return;
+  let changed = false;
   for (let index = 0; index < resources.length; index += 1) {
-    const resource = resources[index];
-    const metadata = embeddedMetadata[resource.path];
+    const metadata = metadataByPath[resources[index].path];
     if (!metadata) continue;
-    resources[index] = {
-      ...resource,
-      ...(metadata.title ? { title: metadata.title } : {}),
-      ...(metadata.icon ? { iconUrl: `data:image/png;base64,${metadata.icon}` } : {}),
-      metadataLoaded: true,
-    };
-    renderedEmbeddedMetadata = true;
+    resources[index] = { ...resources[index], title: metadata.title || resources[index].title, iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : resources[index].iconUrl, metadataLoaded: true };
+    changed = true;
   }
-  if (renderedEmbeddedMetadata) render();
-
-  const pendingResources = resources
-    .map((resource, index) => ({ resource, index }))
-    .filter(({ resource }) => !resource.metadataLoaded);
-
-  await mapWithConcurrency(pendingResources, async ({ resource, index }) => {
+  if (changed) type === "common" ? renderRules() : renderMitm();
+  const pending = resources.map((resource, index) => ({ resource, index })).filter(({ resource }) => !resource.metadataLoaded);
+  await mapWithConcurrency(pending, async ({ resource, index }) => {
     const metadata = await fetchRuleSetMetadata(resource.rawUrl, resource, force);
-    if (currentResources() !== resources) return;
-    const hydratedResource = { ...resources[index], ...metadata, metadataLoaded: true };
-    resources[index] = hydratedResource;
-    updateResourceCard(list, hydratedResource, fallbackIcon);
-  });
-}
-
-function updateResourceCard(list, resource, fallbackIcon) {
-  const card = [...list.querySelectorAll("[data-resource-url]")]
-    .find((element) => element.dataset.resourceUrl === resource.rawUrl);
-  if (!card) return;
-
-  const icon = card.querySelector(".resource-icon");
-  if (icon) {
-    const template = document.createElement("template");
-    template.innerHTML = resourceIcon(fallbackIcon, resource.iconUrl).trim();
-    icon.replaceWith(template.content.firstElementChild);
-    hydrateResourceIcon(card);
-  }
-
-  card.querySelector("h3").textContent = resource.title;
-  const importButton = card.querySelector(".resource-import");
-  if (importButton) {
-    importButton.setAttribute("aria-label", `导入 ${resource.title}${resource.reject ? " 和配套 Reject" : ""}`);
-  }
+    if (current() !== resources) return;
+    resources[index] = { ...resources[index], ...metadata, metadataLoaded: true };
+    type === "common" ? renderRules() : renderMitm();
+  }, 2);
 }
 
 async function fetchRuleSetMetadata(rawUrl, fallback, force) {
@@ -633,52 +737,36 @@ async function fetchRuleSetMetadata(rawUrl, fallback, force) {
 }
 
 function readRuleSetMetadata(source) {
-  const title = source.match(/^\s*name\s*=\s*(.+?)\s*$/im)?.[1]
-    || source.match(/^\s*#\s*NAME\s*:\s*(.+?)\s*$/im)?.[1]
-    || "";
-  const iconBase64 = source.match(/^\s*icon-light\s*=\s*([A-Za-z0-9+/=]+)\s*$/im)?.[1] || "";
-  return {
-    ...(title ? { title } : {}),
-    ...(iconBase64 ? { iconUrl: `data:image/png;base64,${iconBase64}` } : {}),
-  };
+  const title = source.match(/^\s*name\s*=\s*(.+?)\s*$/im)?.[1] || source.match(/^\s*#\s*NAME\s*:\s*(.+?)\s*$/im)?.[1] || "";
+  const icon = source.match(/^\s*icon-light\s*=\s*([A-Za-z0-9+/=]+)\s*$/im)?.[1] || "";
+  return { ...(title ? { title } : {}), ...(icon ? { iconUrl: `data:image/png;base64,${icon}` } : {}) };
 }
 
-async function getEmbeddedResourceMetadata() {
-  if (!embeddedMetadataPromise) {
-    embeddedMetadataPromise = fetch(RESOURCE_METADATA_URL, { cache: "force-cache" })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-      })
+async function getEmbeddedResourceMetadata(type) {
+  if (!embeddedMetadataPromises.has(type)) {
+    embeddedMetadataPromises.set(type, fetch(METADATA_URLS[type], { cache: "force-cache" })
+      .then((response) => response.ok ? response.json() : {})
       .then((data) => data.resources || {})
-      .catch(() => {
-        embeddedMetadataPromise = undefined;
-        return {};
-      });
+      .catch(() => ({})));
   }
-  return embeddedMetadataPromise;
+  return embeddedMetadataPromises.get(type);
 }
 
 async function mapWithConcurrency(items, mapper, limit = 4) {
-  const results = new Array(items.length);
   let nextIndex = 0;
-  const worker = async () => {
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (nextIndex < items.length) {
-      const currentIndex = nextIndex++;
-      results[currentIndex] = await mapper(items[currentIndex]);
+      const index = nextIndex++;
+      await mapper(items[index]);
     }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
+  }));
 }
 
 function resourceIcon(fallback, iconUrl = "") {
   const fallbackMarkup = fallback === "globe"
     ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.8 12h16.4M12 3.5c2.1 2.4 3.1 5.2 3.1 8.5s-1 6.1-3.1 8.5c-2.1-2.4-3.1-5.2-3.1-8.5s1-6.1 3.1-8.5Z"/></svg>`
     : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 18.5 12 4l7 14.5-3.6-1.8H8.6L5 18.5Z"/><path d="M9.2 14.2h5.6"/></svg>`;
-  if (!iconUrl) {
-    return `<span class="resource-icon fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span>`;
-  }
+  if (!iconUrl) return `<span class="resource-icon fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span>`;
   return `<span class="resource-icon app-icon"><img src="${iconUrl}" alt="" width="52" height="52" decoding="async"><span class="fallback-icon ${fallback}" aria-hidden="true">${fallbackMarkup}</span></span>`;
 }
 
@@ -687,15 +775,27 @@ function hydrateResourceIcon(container) {
   if (!image) return;
   const reveal = () => image.classList.add("ready");
   image.addEventListener("load", reveal, { once: true });
-  image.addEventListener("error", () => {
-    image.hidden = true;
-  });
+  image.addEventListener("error", () => { image.hidden = true; });
   if (image.complete && image.naturalWidth > 0) reveal();
+}
+
+async function fetchJson(url, { force = false } = {}) {
+  const response = await fetch(url, { cache: force ? "no-store" : "force-cache", headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function openRuleSetImport(links) {
+  const validLinks = links.filter(Boolean);
+  if (!validLinks.length) return;
+  window.location.href = `anywhere://add-rule-set?${validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&")}`;
+  showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
 }
 
 function setBusy(busy) {
   els.parse.disabled = busy;
   els.file.disabled = busy;
+  els.parse.textContent = busy ? "正在解析" : "开始解析";
 }
 
 function setLoading(button, loading, text) {
@@ -703,40 +803,29 @@ function setLoading(button, loading, text) {
   button.textContent = text;
 }
 
-function setStatus(text) {
-  els.status.textContent = text;
-}
-
-function revokeUrls() {
-  for (const url of objectUrls) URL.revokeObjectURL(url);
-  objectUrls = [];
-}
-
-function emptyState(text) {
-  const empty = document.createElement("div");
-  empty.className = "empty-state";
-  empty.textContent = text;
-  return empty;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
+function setStatus(text) { els.status.textContent = text; }
+function revokeUrls() { for (const url of objectUrls) URL.revokeObjectURL(url); objectUrls = []; }
+function emptyState(text) { const empty = document.createElement("div"); empty.className = "empty-state"; empty.textContent = text; return empty; }
+function formatRuleCount(value) { return Number(value || 0).toLocaleString(); }
+function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => els.toast.classList.remove("show"), 1800);
+  toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2400);
+}
+
+function readStoredBk7Selection() {
+  try { return new Set(JSON.parse(sessionStorage.getItem(BK7_SELECTION_KEY) || "[]")); } catch { return new Set(); }
+}
+
+function persistBk7Selection() {
+  sessionStorage.setItem(BK7_SELECTION_KEY, JSON.stringify([...selectedBk7Urls]));
 }
 
 function initTheme() {
-  const stored = localStorage.getItem("theme");
-  applyTheme(stored || "light");
+  applyTheme(localStorage.getItem("theme") || "light");
 }
 
 function toggleTheme() {
@@ -748,9 +837,21 @@ function toggleTheme() {
 function applyTheme(theme) {
   const normalized = theme === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = normalized;
-  els.themeToggle.setAttribute(
-    "aria-label",
-    normalized === "dark" ? "切换浅色模式" : "切换深色模式",
-  );
+  els.themeMeta.content = normalized === "dark" ? "#000000" : "#f5f5f7";
+  els.themeToggle.setAttribute("aria-label", normalized === "dark" ? "切换浅色模式" : "切换深色模式");
   els.themeToggle.setAttribute("aria-pressed", String(normalized === "dark"));
+}
+
+function initPwa() {
+  if ("serviceWorker" in navigator && ["https:", "http:"].includes(window.location.protocol)) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  if (isIos && !standalone && !localStorage.getItem("anywhere-hub-install-hint-dismissed")) els.installHint.hidden = false;
+}
+
+function dismissInstallHint() {
+  localStorage.setItem("anywhere-hub-install-hint-dismissed", "1");
+  els.installHint.hidden = true;
 }

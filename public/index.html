@@ -2,180 +2,119 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Anywhere-hub</title>
-    <link rel="stylesheet" href="./styles.css?v=20260819-icon-rendering">
-  <script type="module" src="./app.js?v=20260819-fast-icons"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f5f5f7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Anywhere Hub">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="description" content="Anywhere 的规则集、MITM 脚本与本地隐私报告转换工具。">
+    <title>Anywhere Hub</title>
+    <link rel="manifest" href="./manifest.webmanifest?v=logo-original">
+    <link rel="icon" href="./icons/anywhere-hub-mark.svg?v=logo-original" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icons/anywhere-hub-180.png?v=logo-original">
+    <link rel="stylesheet" href="./styles.css?v=20260825-hub-pwa15">
+    <script type="module" src="./app.js?v=20260825-hub-pwa7"></script>
   </head>
   <body>
-    <main class="shell">
-      <section class="app-window" aria-label="Anywhere-hub">
-        <div class="network-bg" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
+    <a class="skip-link" href="#mainContent">跳到主要内容</a>
+    <div class="app-shell">
+      <header class="app-topbar">
+        <a class="brand-lockup" href="#library" aria-label="Anywhere Hub，返回规则库">
+          <img class="brand-mark" src="./icons/anywhere-hub-mark.svg?v=logo-original" width="44" height="44" alt="">
+          <span class="brand-copy">
+            <b>Anywhere Hub</b>
+            <small>规则、脚本与转换，一处直达。</small>
+          </span>
+        </a>
+
+        <div class="topbar-actions">
+          <button id="themeToggle" type="button" class="icon-button" aria-label="切换深色模式" aria-pressed="false">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2m0 15v2M2.5 12h2m15 0h2M5.3 5.3l1.4 1.4m10.6 10.6 1.4 1.4m0-13.4-1.4 1.4M6.7 17.3l-1.4 1.4"/></svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.3 8.3 0 0 1 8.8 4 8.3 8.3 0 1 0 20 15.2Z"/></svg>
+          </button>
         </div>
-
-        <header class="app-topbar">
-          <div class="brand-lockup">
-            <div class="brand-copy">
-              <span class="brand-eyebrow">Anywhere</span>
-              <b>Anywhere-hub</b>
-              <small>The best native proxy client for iOS, iPadOS, and tvOS.</small>
-            </div>
-          </div>
-
-          <nav class="feature-tabs" aria-label="功能切换">
-            <button class="active" type="button" data-tab="rules">规则集</button>
-            <button type="button" data-tab="converter">隐私报告转换</button>
-            <button type="button" data-tab="mitm">MITM 脚本</button>
-          </nav>
-
-          <button id="themeToggle" type="button" class="icon-button" aria-label="切换深色模式" aria-pressed="false"></button>
-        </header>
-
-        <section class="panel active" data-panel="rules">
-          <div class="hero-row compact-hero">
-            <div>
-              <p class="section-kicker">rules/common</p>
-              <h1>常用规则集</h1>
-              <p>仅显示 `rules/common` 里的常用 `.arrs` 规则集，列表从 GitHub main 分支同步。</p>
-            </div>
-            <div class="hero-actions">
-              <a class="repo-link" href="https://github.com/chikacya/anywhere-rules" target="_blank" rel="noreferrer">打开远程仓库</a>
-              <button id="refreshRules" type="button" class="primary">同步远程</button>
-            </div>
-          </div>
-
-          <section class="collection-shell" aria-label="常用规则集列表">
-            <div class="collection-toolbar">
-              <div>
-                <h2>选择并导入</h2>
-                <p id="rulesStatus">正在同步 GitHub...</p>
-              </div>
-              <div class="list-tools">
-                <label class="search-box">
-                  <span class="sr-only">搜索规则集</span>
-                  <input id="rulesSearch" type="search" autocomplete="off" placeholder="搜索规则集">
-                </label>
-                <button id="importSelectedRules" class="ghost" type="button" disabled>导入所选</button>
-              </div>
-            </div>
-            <div id="rulesList" class="resource-grid"></div>
-          </section>
-        </section>
-
-        <section class="panel" data-panel="converter">
+      </header>
+      <main id="mainContent">
+        <section class="panel active" data-panel="library" aria-labelledby="libraryTitle">
           <div class="hero-row">
             <div>
-              <p class="section-kicker">Privacy Report Converter</p>
-              <h1>本地转换 App Privacy Report</h1>
-              <p>使用 iOS App 隐私报告生成 Anywhere `.arrs` 规则集。报告只在本地浏览器读取和解析。</p>
-            </div>
-          </div>
-
-          <section class="native-card upload-panel" aria-label="转换工具">
-            <div class="upload-copy">
-              <span class="tool-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4m0 0 4 4m-4-4L8 8M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
-              </span>
-              <div>
-                <h2>选择 `.ndjson` 文件</h2>
-                <p>本地读取 · 不上传 · 无第三方统计</p>
-              </div>
-            </div>
-
-            <div class="file-line">
-              <input id="file" type="file" accept=".ndjson,.jsonl,.json">
-              <button id="parse" type="button" class="primary">开始解析</button>
-            </div>
-
-            <div class="options" aria-label="解析选项">
-              <label><input id="filterFake" type="checkbox" checked>过滤 fake-IP</label>
-              <label><input id="filterPrivate" type="checkbox" checked>过滤私网 IP</label>
-              <label><input id="filterLocal" type="checkbox" checked>过滤本地 IP</label>
-              <label><input id="allowShared" type="checkbox">共享目标可归入多个 App</label>
-            </div>
-
-            <progress id="progress" value="0" max="100"></progress>
-            <p id="status" class="status">等待选择 `.ndjson` 文件。</p>
-          </section>
-
-          <section id="stats" class="metrics" aria-label="统计"></section>
-
-          <section id="conversionResults" class="converter-results" hidden>
-            <aside class="native-card app-panel">
-              <div class="card-toolbar">
-                <div>
-                  <h2>应用</h2>
-                  <p>点击预览，勾选后下载。</p>
-                </div>
-                <div class="actions">
-                  <button id="selectAll" type="button" class="ghost">全选</button>
-                  <button id="clearSelection" type="button" class="ghost">清空</button>
-                </div>
-              </div>
-              <label class="search-box full">
-                <input id="appSearch" type="search" autocomplete="off" placeholder="搜索应用或 bundleID">
-              </label>
-              <div id="apps" class="app-list"></div>
-            </aside>
-
-            <section class="native-card report-preview-panel">
-              <div class="preview-head">
-                <div>
-                  <p class="section-kicker">Generated .arrs</p>
-                  <h2>规则预览</h2>
-                </div>
-                <div class="actions">
-                  <button id="downloadSelected" type="button" disabled>下载所选</button>
-                  <button id="downloadAll" type="button" disabled>下载全部 ZIP</button>
-                </div>
-              </div>
-              <textarea id="preview" spellcheck="false" aria-label="规则预览" placeholder="解析完成后，这里会显示选中 App 的规则。"></textarea>
-            </section>
-          </section>
-
-          <section id="unresolvedPanel" class="native-card unresolved-panel" hidden>
-            <div class="card-toolbar">
-              <div>
-                <h2>代理容器待确认目标</h2>
-                <p>由代理类应用记录到、但无法可靠归还到具体应用的目标。</p>
-              </div>
-            </div>
-            <ul id="unresolved" class="unresolved"></ul>
-          </section>
-        </section>
-
-        <section class="panel" data-panel="mitm">
-          <div class="hero-row compact-hero">
-            <div>
-              <p class="section-kicker">mitm</p>
-              <h1>MITM 脚本</h1>
-              <p>从 `mitm` 目录同步 `.amrs` 规则集。MITM 涉及请求/响应改写，请务必理解内容后再使用。</p>
+              <p class="section-kicker">Anywhere Rule Library</p>
+              <h1 id="libraryTitle">挑选适合你的规则</h1>
+              <p>从日常常用规则到 Blackmatrix7 全量集合，按需选择并直接交给 Anywhere 导入。</p>
             </div>
             <div class="hero-actions">
-              <a class="repo-link" href="https://github.com/chikacya/anywhere-rules" target="_blank" rel="noreferrer">打开远程仓库</a>
-              <button id="refreshMitm" type="button" class="primary">同步远程</button>
+              <a class="button secondary" href="https://github.com/chikacya/anywhere-rules" target="_blank" rel="noreferrer">打开规则仓库</a>
+              <a class="button primary" href="http://worker.anywhere-converter.ccwu.cc/" target="_blank" rel="noreferrer">打开通用转换器</a>
             </div>
           </div>
 
-          <section class="collection-shell" aria-label="MITM 脚本列表">
+          <div class="library-switch" role="tablist" aria-label="规则库类型">
+            <button class="active" type="button" role="tab" aria-selected="true" data-library="common">常用规则</button>
+            <button type="button" role="tab" aria-selected="false" data-library="bk7">全量规则</button>
+          </div>
+
+          <section class="library-panel active" data-library-panel="common" aria-label="常用规则集">
             <div class="collection-toolbar">
-              <div>
-                <h2>选择脚本并导入</h2>
-                <p id="mitmStatus">正在同步 GitHub...</p>
-              </div>
+              <div><h2>常用规则集</h2><p id="rulesStatus">正在同步 GitHub...</p></div>
               <div class="list-tools">
-                <label class="search-box">
-                  <span class="sr-only">搜索 MITM 脚本</span>
-                  <input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本">
-                </label>
+                <label class="search-box"><span class="sr-only">搜索常用规则集</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><input id="rulesSearch" type="search" autocomplete="off" placeholder="搜索规则集"></label>
+                <button id="refreshRules" class="button secondary" type="button">同步远程</button>
+                <button id="importSelectedRules" class="button primary" type="button" disabled>导入所选</button>
               </div>
             </div>
-            <div id="mitmList" class="resource-grid"></div>
+            <div id="rulesList" class="resource-grid" aria-live="polite"></div>
+          </section>
+
+          <section class="library-panel" data-library-panel="bk7" hidden aria-label="全量规则集">
+            <div class="bk7-intro">
+              <div><p class="section-kicker">Blackmatrix7 · rules/all</p><h2>全量规则集</h2><p>按上游目录分组显示。展开后每项均为一个可单独导入的文件，名称与来源路径会一并显示；目录索引按需加载，不读取每个规则文件。</p></div>
+              <button id="refreshBk7" class="button secondary" type="button">同步目录</button>
+            </div>
+            <div class="bk7-toolbar">
+              <label class="search-box full-width"><span class="sr-only">搜索 BK7 规则集</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><input id="bk7Search" type="search" autocomplete="off" placeholder="搜索名称、目录或规则文件"></label>
+              <button id="bk7SelectVisible" class="button secondary" type="button" disabled>选择当前筛选</button>
+              <button id="bk7ClearSelection" class="button quiet" type="button" disabled>清空</button>
+            </div>
+            <p id="bk7Status" class="collection-status">切换到此页后加载目录。</p>
+            <div id="bk7List" class="bk7-list" aria-live="polite"></div>
+            <div class="bk7-more-wrap"><button id="bk7LoadMore" class="button secondary" type="button" hidden>显示更多</button></div>
+            <div id="bk7Sentinel" aria-hidden="true"></div>
+            <aside id="bk7BatchBar" class="batch-bar" hidden aria-label="BK7 批量导入"><span id="bk7SelectedCount">已选 0 项</span><button id="importSelectedBk7" class="button primary" type="button" disabled>批量导入</button></aside>
           </section>
         </section>
-      </section>
-    </main>
+
+        <section class="panel" data-panel="privacy" hidden aria-labelledby="privacyTitle">
+          <div class="hero-row"><div><p class="section-kicker">Privacy Report</p><h1 id="privacyTitle">把隐私报告变成自己的规则</h1><p>App Privacy Report 只在当前设备解析，不上传、不记录，也不依赖第三方分析服务。</p></div></div>
+          <div class="tool-launcher"><span class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7h10v10M17 7 7 17"/><path d="M5 11V6a1 1 0 0 1 1-1h5M19 13v5a1 1 0 0 1-1 1h-5"/></svg></span><div><h2>还需要转换其他插件？</h2><p>使用 Anywhere Converter 生成可导入的 `.amrs` 与 `.arrs`。</p></div><a class="button secondary" href="http://worker.anywhere-converter.ccwu.cc/" target="_blank" rel="noreferrer">打开转换器</a></div>
+          <section class="native-card upload-panel" aria-label="隐私报告转换工具">
+            <div class="upload-copy"><span class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0 4 4m-4-4L8 8M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span><div><h2>选择 `.ndjson` 文件</h2><p>本地读取 · 不上传 · 无第三方统计</p></div></div>
+            <div class="file-line"><input id="file" type="file" accept=".ndjson,.jsonl,.json"><button id="parse" type="button" class="button primary">开始解析</button></div>
+            <div class="options" aria-label="解析选项"><label><input id="filterFake" type="checkbox" checked>过滤 fake-IP</label><label><input id="filterPrivate" type="checkbox" checked>过滤私网 IP</label><label><input id="filterLocal" type="checkbox" checked>过滤本地 IP</label><label><input id="allowShared" type="checkbox">共享目标可归入多个 App</label></div>
+            <progress id="progress" value="0" max="100"></progress><p id="status" class="status">等待选择 `.ndjson` 文件。</p>
+          </section>
+          <section id="stats" class="metrics" aria-label="统计"></section>
+          <section id="conversionResults" class="converter-results" hidden>
+            <aside class="native-card app-panel"><div class="card-toolbar"><div><h2>应用</h2><p>点击预览，勾选后下载。</p></div><div class="actions"><button id="selectAll" type="button" class="button quiet">全选</button><button id="clearSelection" type="button" class="button quiet">清空</button></div></div><label class="search-box full-width"><span class="sr-only">搜索应用或 Bundle ID</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><input id="appSearch" type="search" autocomplete="off" placeholder="搜索应用或 bundle ID"></label><div id="apps" class="app-list"></div></aside>
+            <section class="native-card report-preview-panel"><div class="preview-head"><div><p class="section-kicker">Generated .arrs</p><h2>规则预览</h2></div><div class="actions"><button id="downloadSelected" type="button" class="button secondary" disabled>下载所选</button><button id="downloadAll" type="button" class="button primary" disabled>下载全部 ZIP</button></div></div><textarea id="preview" spellcheck="false" aria-label="规则预览" placeholder="解析完成后，这里会显示选中 App 的规则。"></textarea></section>
+          </section>
+          <section id="unresolvedPanel" class="native-card unresolved-panel" hidden><div class="card-toolbar"><div><h2>代理容器待确认目标</h2><p>由代理类应用记录到、但无法可靠归还到具体应用的目标。</p></div></div><ul id="unresolved" class="unresolved"></ul></section>
+        </section>
+
+        <section class="panel" data-panel="mitm" hidden aria-labelledby="mitmTitle">
+          <div class="hero-row"><div><p class="section-kicker">MITM Scripts</p><h1 id="mitmTitle">选择需要的请求改写</h1><p>MITM 会读取匹配请求或响应。请只导入你理解且有权使用的脚本。</p></div><div class="hero-actions"><a class="button secondary" href="https://github.com/chikacya/anywhere-rules/tree/main/mitm" target="_blank" rel="noreferrer">查看仓库目录</a></div></div>
+          <aside class="mitm-notice" aria-label="MITM 使用提示"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5.6c0 4.2-2.8 7.8-7 8.9-4.2-1.1-7-4.7-7-8.9V6l7-2.5Z"/><path d="M12 8v4.5m0 3h.01"/></svg><p>使用前请确保 Anywhere 证书已安装并且已信任。去广告相关的 MITM 脚本，请设置“阻止 QUIC”为“阻止”。</p></aside>
+          <section class="collection-shell" aria-label="MITM 脚本列表"><div class="collection-toolbar"><div><h2>MITM 脚本</h2><p id="mitmStatus">正在同步 GitHub...</p></div><div class="list-tools"><label class="search-box"><span class="sr-only">搜索 MITM 脚本</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本"></label><button id="refreshMitm" type="button" class="button secondary">同步远程</button></div></div><div id="mitmList" class="resource-grid" aria-live="polite"></div></section>
+        </section>
+      </main>
+
+      <aside id="installHint" class="install-hint" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m0 0 4 4m-4-4L8 7M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg><span>在 Safari 的分享菜单中选择“添加到主屏幕”，即可像 App 一样打开。</span><button id="dismissInstallHint" type="button" aria-label="关闭安装提示">×</button></aside>
+      <nav class="mobile-nav" aria-label="页面导航">
+        <button class="active" type="button" data-tab="library" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h10.5a3 3 0 0 1 3 3V19H8a3 3 0 0 0-3 1.5V4.5Zm0 0A2.5 2.5 0 0 0 2.5 7v11.5A2.5 2.5 0 0 1 5 16h13.5"/></svg><span>规则库</span></button>
+        <button type="button" data-tab="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5.6c0 4.2-2.8 7.8-7 8.9-4.2-1.1-7-4.7-7-8.9V6l7-2.5Z"/><path d="M12 8v4.5m0 3h.01"/></svg><span>隐私报告</span></button>
+        <button type="button" data-tab="mitm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.3 18.7 4.7 16l7.3-11 7.3 11-2.6 2.7H7.3Z"/><path d="M9.5 14.5h5"/></svg><span>MITM 脚本</span></button>
+      </nav>
+    </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

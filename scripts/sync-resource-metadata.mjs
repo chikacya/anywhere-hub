@@ -7,20 +7,29 @@ const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
 const METADATA_READ_BYTES = 48 * 1024;
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const output = path.join(root, "public/resource-metadata.json");
+const outputDirectory = path.join(root, "public");
 
-const commonIndex = await fetchJson(COMMON_INDEX_URL);
-const mitmIndex = await fetchJson(MITM_API_URL);
-const paths = [
-  ...commonIndex.files
+const [commonIndex, mitmIndex] = await Promise.all([fetchJson(COMMON_INDEX_URL), fetchJson(MITM_API_URL)]);
+const resourceGroups = {
+  common: commonIndex.files
     .filter((item) => item.output_path?.startsWith("common/") && item.output_path.endsWith(".arrs"))
-    .map((item) => `rules/${item.output_path}`),
-  ...mitmIndex
+    .map((item) => `rules/${item.output_path}`)
+    .sort(),
+  mitm: mitmIndex
     .filter((item) => item.type === "file" && item.name.endsWith(".amrs"))
-    .map((item) => item.path),
-].sort();
+    .map((item) => item.path)
+    .sort(),
+};
 
-const entries = await mapWithConcurrency(paths, async (resourcePath) => {
+await mkdir(outputDirectory, { recursive: true });
+for (const [kind, paths] of Object.entries(resourceGroups)) {
+  const entries = await mapWithConcurrency(paths, readMetadata);
+  const output = path.join(outputDirectory, `resource-metadata-${kind}.json`);
+  await writeFile(output, `${JSON.stringify({ generatedAt: new Date().toISOString(), resources: Object.fromEntries(entries) })}\n`);
+  console.log(`Wrote ${entries.length} ${kind} metadata entries to ${output}`);
+}
+
+async function readMetadata(resourcePath) {
   const response = await fetch(`${RAW_BASE}/${resourcePath}`, {
     headers: { Range: `bytes=0-${METADATA_READ_BYTES - 1}` },
   });
@@ -30,14 +39,7 @@ const entries = await mapWithConcurrency(paths, async (resourcePath) => {
   const icon = source.match(/^\s*icon-light\s*=\s*([A-Za-z0-9+/=]+)\s*$/im)?.[1] || "";
   if (!title || !icon) throw new Error(`${resourcePath}: missing name or icon-light metadata`);
   return [resourcePath, { title, icon }];
-});
-
-await mkdir(path.dirname(output), { recursive: true });
-await writeFile(output, `${JSON.stringify({
-  generatedAt: new Date().toISOString(),
-  resources: Object.fromEntries(entries),
-})}\n`);
-console.log(`Wrote ${entries.length} resource metadata entries to ${output}`);
+}
 
 async function fetchJson(url) {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
