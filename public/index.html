@@ -13,8 +13,8 @@
     <link rel="manifest" href="./manifest.webmanifest?v=logo-original">
     <link rel="icon" href="./icons/anywhere-hub-mark.svg?v=logo-original" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icons/anywhere-hub-180.png?v=logo-original">
-    <link rel="stylesheet" href="./styles.css?v=20260825-hub-pwa15">
-    <script type="module" src="./app.js?v=20260825-hub-pwa7"></script>
+    <link rel="stylesheet" href="./styles.css?v=20260928-hub-updates5">
+    <script type="module" src="./app.js?v=20260928-hub-updates4"></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -104,7 +104,8 @@
         <section class="panel" data-panel="mitm" hidden aria-labelledby="mitmTitle">
           <div class="hero-row"><div><p class="section-kicker">MITM Scripts</p><h1 id="mitmTitle">选择需要的请求改写</h1><p>MITM 会读取匹配请求或响应。请只导入你理解且有权使用的脚本。</p></div><div class="hero-actions"><a class="button secondary" href="https://github.com/chikacya/anywhere-rules/tree/main/mitm" target="_blank" rel="noreferrer">查看仓库目录</a></div></div>
           <aside class="mitm-notice" aria-label="MITM 使用提示"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5.6c0 4.2-2.8 7.8-7 8.9-4.2-1.1-7-4.7-7-8.9V6l7-2.5Z"/><path d="M12 8v4.5m0 3h.01"/></svg><p>使用前请确保 Anywhere 证书已安装并且已信任。去广告相关的 MITM 脚本，请设置“阻止 QUIC”为“阻止”。</p></aside>
-          <section class="collection-shell" aria-label="MITM 脚本列表"><div class="collection-toolbar"><div><h2>MITM 脚本</h2><p id="mitmStatus">正在同步 GitHub...</p></div><div class="list-tools"><label class="search-box"><span class="sr-only">搜索 MITM 脚本</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本"></label><button id="refreshMitm" type="button" class="button secondary">同步远程</button></div></div><div id="mitmList" class="resource-grid" aria-live="polite"></div></section>
+          <p class="mitm-follow-intro">点「关注」追踪后续版本；有更新时在 Anywhere 手动更新，完成后回此确认。</p>
+          <section class="collection-shell" aria-label="MITM 脚本列表"><div class="collection-toolbar"><div><h2>MITM 脚本</h2><p id="mitmStatus">正在同步 GitHub...</p></div><div class="list-tools mitm-list-tools"><label class="search-box"><span class="sr-only">搜索 MITM 脚本</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><input id="mitmSearch" type="search" autocomplete="off" placeholder="搜索脚本"></label><button id="mitmUpdatesFilter" type="button" class="button secondary mitm-updates-filter" aria-pressed="false"><span class="update-dot" aria-hidden="true"></span>有更新 <span id="mitmUpdateCount">0</span></button><button id="refreshMitm" type="button" class="button secondary">同步远程</button></div></div><div id="mitmList" class="resource-grid" aria-live="polite"></div></section>
         </section>
       </main>
 
@@ -115,6 +116,16 @@
         <button type="button" data-tab="mitm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.3 18.7 4.7 16l7.3-11 7.3 11-2.6 2.7H7.3Z"/><path d="M9.5 14.5h5"/></svg><span>MITM 脚本</span></button>
       </nav>
     </div>
+    <dialog id="mitmUpdateSheet" class="mitm-update-sheet" aria-labelledby="mitmSheetTitle">
+      <div class="mitm-sheet-handle" aria-hidden="true"></div>
+      <button id="mitmSheetClose" class="mitm-sheet-close" type="button" aria-label="关闭更新详情"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      <div class="mitm-sheet-heading"><span id="mitmSheetIcon"></span><div><h2 id="mitmSheetTitle"></h2><p>有新版本可查看</p></div></div>
+      <dl class="mitm-version-list"><div><dt>你上次确认的版本</dt><dd id="mitmSheetPrevious"></dd></div><div><dt>仓库当前版本</dt><dd id="mitmSheetCurrent"></dd></div></dl>
+      <p class="mitm-sheet-note">请在 Anywhere 中手动更新现有脚本。从 Hub 再次导入会新增一份，不会覆盖旧脚本。</p>
+      <button id="mitmSheetConfirm" class="button primary mitm-sheet-confirm" type="button">我已在 Anywhere 更新</button>
+      <div class="mitm-sheet-actions"><a id="mitmSheetRaw" class="button secondary" target="_blank" rel="noreferrer">查看 Raw</a><button id="mitmSheetLater" class="button secondary" type="button">稍后处理</button></div>
+      <div class="mitm-sheet-footer"><span>仅记录你的确认，不会修改 Anywhere 中的脚本</span><button id="mitmSheetUnfollow" type="button">取消关注</button></div>
+    </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

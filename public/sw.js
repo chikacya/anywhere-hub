@@ -1,9 +1,9 @@
-const CACHE_NAME = "anywhere-hub-shell-v24";
+const CACHE_NAME = "anywhere-hub-shell-v35";
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20260825-hub-pwa15",
-  "./app.js?v=20260825-hub-pwa7",
+  "./styles.css?v=20260928-hub-updates5",
+  "./app.js?v=20260928-hub-updates4",
   "./manifest.webmanifest?v=logo-original",
   "./report-worker.js",
   "./lib/arrs.mjs",
@@ -12,6 +12,7 @@ const SHELL = [
   "./lib/normalize.mjs",
   "./lib/parser.mjs",
   "./lib/zip.mjs",
+  "./lib/mitm-updates.mjs?v=20260928-hub-updates3",
   "./icons/anywhere-hub-mark.svg?v=logo-original",
   "./icons/anywhere-hub-180.png?v=logo-original",
   "./icons/anywhere-hub-192.png?v=logo-original",
@@ -32,6 +33,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
+  if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) return;
+  if (url.searchParams.has("t")) return;
   if (url.origin === self.location.origin) {
     if (event.request.mode === "navigate") {
       event.respondWith(fetch(event.request).then((response) => {
@@ -45,6 +48,7 @@ self.addEventListener("fetch", (event) => {
         if (response.ok) event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone())));
         return response;
       }).catch(() => cached);
+      if (cached) event.waitUntil(network);
       return cached || network;
     }));
     return;

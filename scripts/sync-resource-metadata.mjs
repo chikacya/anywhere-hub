@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,13 +9,17 @@ const METADATA_READ_BYTES = 48 * 1024;
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const outputDirectory = path.join(root, "public");
 
-const [commonIndex, mitmIndex] = await Promise.all([fetchJson(COMMON_INDEX_URL), fetchJson(MITM_API_URL)]);
+const [commonCatalog, mitmCatalog] = await Promise.all([readCatalog("common"), readCatalog("mitm")]);
+const [commonIndex, mitmIndex] = await Promise.all([
+  commonCatalog ? null : fetchJson(COMMON_INDEX_URL),
+  mitmCatalog ? null : fetchJson(MITM_API_URL),
+]);
 const resourceGroups = {
-  common: commonIndex.files
+  common: commonCatalog ? Object.keys(commonCatalog) : commonIndex.files
     .filter((item) => item.output_path?.startsWith("common/") && item.output_path.endsWith(".arrs"))
     .map((item) => `rules/${item.output_path}`)
     .sort(),
-  mitm: mitmIndex
+  mitm: mitmCatalog ? Object.keys(mitmCatalog) : mitmIndex
     .filter((item) => item.type === "file" && item.name.endsWith(".amrs"))
     .map((item) => item.path)
     .sort(),
@@ -23,10 +27,24 @@ const resourceGroups = {
 
 await mkdir(outputDirectory, { recursive: true });
 for (const [kind, paths] of Object.entries(resourceGroups)) {
-  const entries = await mapWithConcurrency(paths, readMetadata);
+  const catalog = kind === "common" ? commonCatalog : mitmCatalog;
+  const entries = catalog
+    ? paths.map((resourcePath) => [resourcePath, catalog[resourcePath]]).filter(([, metadata]) => metadata)
+    : await mapWithConcurrency(paths, readMetadata);
   const output = path.join(outputDirectory, `resource-metadata-${kind}.json`);
   await writeFile(output, `${JSON.stringify({ generatedAt: new Date().toISOString(), resources: Object.fromEntries(entries) })}\n`);
   console.log(`Wrote ${entries.length} ${kind} metadata entries to ${output}`);
+}
+
+async function readCatalog(kind) {
+  try {
+    const data = process.env.CATALOG_DIR
+      ? JSON.parse(await readFile(path.join(process.env.CATALOG_DIR, `${kind}.json`), "utf8"))
+      : await fetchJson(`${RAW_BASE}/hub/${kind}.json`);
+    return data.resources || null;
+  } catch {
+    return null;
+  }
 }
 
 async function readMetadata(resourcePath) {

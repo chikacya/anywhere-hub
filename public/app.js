@@ -1,11 +1,13 @@
 import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";
 import { createZip } from "./lib/zip.mjs";
+import { enrichMitmFollows, hasMitmUpdate, mitmVersion, readMitmFollows, saveMitmFollows } from "./lib/mitm-updates.mjs?v=20260928-hub-updates3";
 
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
 const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
 const BK7_INDEX_URL = `${RAW_BASE}/rules/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
+const CATALOG_URLS = { common: "./api/catalog/common", mitm: "./api/catalog/mitm" };
 const METADATA_URLS = {
   common: "./resource-metadata-common.json",
   mitm: "./resource-metadata-mitm.json",
@@ -48,6 +50,18 @@ const els = {
   mitmStatus: document.querySelector("#mitmStatus"),
   mitmSearch: document.querySelector("#mitmSearch"),
   mitmList: document.querySelector("#mitmList"),
+  mitmUpdatesFilter: document.querySelector("#mitmUpdatesFilter"),
+  mitmUpdateCount: document.querySelector("#mitmUpdateCount"),
+  mitmUpdateSheet: document.querySelector("#mitmUpdateSheet"),
+  mitmSheetClose: document.querySelector("#mitmSheetClose"),
+  mitmSheetIcon: document.querySelector("#mitmSheetIcon"),
+  mitmSheetTitle: document.querySelector("#mitmSheetTitle"),
+  mitmSheetPrevious: document.querySelector("#mitmSheetPrevious"),
+  mitmSheetCurrent: document.querySelector("#mitmSheetCurrent"),
+  mitmSheetRaw: document.querySelector("#mitmSheetRaw"),
+  mitmSheetConfirm: document.querySelector("#mitmSheetConfirm"),
+  mitmSheetLater: document.querySelector("#mitmSheetLater"),
+  mitmSheetUnfollow: document.querySelector("#mitmSheetUnfollow"),
 
   file: document.querySelector("#file"),
   parse: document.querySelector("#parse"),
@@ -79,6 +93,7 @@ let mitmScripts = [];
 let bk7Files = [];
 let bk7Groups = [];
 let bk7VisibleCount = BK7_PAGE_SIZE;
+let bk7BatchOffset = 0;
 let selectedBk7Urls = readStoredBk7Selection();
 let expandedBk7Groups = new Set();
 let toastTimer;
@@ -87,13 +102,21 @@ let mitmMetadataPromise;
 let bk7LoadPromise;
 let bk7RenderFrame;
 let bk7Observer;
+let importCounts = {};
+let importCountsLoaded = false;
+let mitmFollows = readMitmFollows(window.localStorage);
+let mitmUpdatesOnly = false;
+let activeMitmSheetPath = "";
+let mitmSheetTrigger;
 const embeddedMetadataPromises = new Map();
+const catalogPromises = new Map();
 
 initTheme();
 bindEvents();
 initPwa();
 activateTab(readInitialTab(), { updateHash: false });
 loadRepositoryData();
+void loadImportStats();
 
 function bindEvents() {
   for (const tab of els.tabs) tab.addEventListener("click", () => activateTab(tab.dataset.tab));
@@ -105,6 +128,23 @@ function bindEvents() {
   els.refreshMitm.addEventListener("click", () => loadMitm({ force: true }));
   els.rulesSearch.addEventListener("input", renderRules);
   els.mitmSearch.addEventListener("input", renderMitm);
+  els.mitmUpdatesFilter.addEventListener("click", () => {
+    mitmUpdatesOnly = !mitmUpdatesOnly;
+    renderMitm();
+  });
+  els.mitmSheetClose.addEventListener("click", closeMitmSheet);
+  els.mitmSheetLater.addEventListener("click", closeMitmSheet);
+  els.mitmSheetConfirm.addEventListener("click", confirmMitmUpdate);
+  els.mitmSheetUnfollow.addEventListener("click", unfollowFromMitmSheet);
+  els.mitmUpdateSheet.addEventListener("click", (event) => {
+    if (event.target === els.mitmUpdateSheet) closeMitmSheet();
+  });
+  els.mitmUpdateSheet.addEventListener("close", () => {
+    document.body.classList.remove("mitm-sheet-open");
+    activeMitmSheetPath = "";
+    if (mitmSheetTrigger?.isConnected) mitmSheetTrigger.focus();
+    mitmSheetTrigger = null;
+  });
   els.importSelectedRules.addEventListener("click", importSelectedRules);
 
   els.refreshBk7.addEventListener("click", () => loadBk7({ force: true }));
@@ -202,9 +242,6 @@ async function loadRules({ force = false } = {}) {
     els.rulesStatus.textContent = `已同步 ${rules.length} 个常用规则集`;
     if (activeLibrary() === "common") void hydrateRuleMetadata(rules, force);
   } catch (error) {
-    rules = [];
-    selectedRuleUrls.clear();
-    renderRules();
     els.rulesStatus.textContent = `同步失败：${error.message}`;
     showToast("规则集同步失败，请稍后重试");
   } finally {
@@ -227,10 +264,11 @@ function renderRules() {
       </div>
       <div class="resource-card-copy"><h3>${escapeHtml(rule.title)}</h3><p>${escapeHtml(rule.description)}</p></div>
       <div class="resource-meta"><span>${rule.ruleCount.toLocaleString()} 条规则</span>${rule.skippedCount ? `<span>跳过 ${rule.skippedCount}</span>` : ""}</div>
+      <div class="resource-stats"><span class="resource-stat-pill download-stat" data-import-path="${escapeHtml(rule.path)}">${importCountText(rule.path)}</span>${rule.updated ? `<time class="resource-stat-pill update-stat" datetime="${escapeHtml(rule.updated)}">${escapeHtml(rule.updated)}</time>` : ""}</div>
       <div class="resource-actions"><a class="preview-link" href="${escapeHtml(rule.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="导入 ${escapeHtml(rule.title)}">一键导入</button></div>
     `;
     card.querySelector(".row-select").addEventListener("change", (event) => toggleRuleSelection(rule, event.currentTarget.checked));
-    card.querySelector(".resource-import").addEventListener("click", () => openRuleSetImport([rule.rawUrl]));
+    card.querySelector(".resource-import").addEventListener("click", () => openRuleSetImport([rule.rawUrl], [rule.path]));
     hydrateResourceIcon(card);
     fragment.append(card);
   }
@@ -251,7 +289,8 @@ function updateRuleImportButtons() {
 }
 
 function importSelectedRules() {
-  openRuleSetImport(rules.filter((rule) => selectedRuleUrls.has(rule.rawUrl)).map((rule) => rule.rawUrl));
+  const selected = rules.filter((rule) => selectedRuleUrls.has(rule.rawUrl));
+  openRuleSetImport(selected.map((rule) => rule.rawUrl), selected.map((rule) => rule.path));
 }
 
 async function loadBk7({ force = false } = {}) {
@@ -268,21 +307,18 @@ async function loadBk7({ force = false } = {}) {
         rawUrl: `${RAW_BASE}/rules/${item.output_path}`,
         ruleCount: item.rule_count ?? 0,
         skippedCount: item.skipped_count ?? 0,
-        updated: item.upstream_updated || "",
       }));
       const availableUrls = new Set(bk7Files.map((file) => file.rawUrl));
       selectedBk7Urls = new Set([...selectedBk7Urls].filter((url) => availableUrls.has(url)));
       bk7Groups = groupBk7Files(bk7Files);
+      bk7BatchOffset = 0;
       bk7VisibleCount = BK7_PAGE_SIZE;
       els.bk7Status.textContent = `已同步 ${bk7Files.length.toLocaleString()} 个文件，${bk7Groups.length.toLocaleString()} 个目录。`;
       renderBk7();
       observeBk7Sentinel();
     })
     .catch((error) => {
-      bk7Files = [];
-      bk7Groups = [];
       els.bk7Status.textContent = `目录同步失败：${error.message}`;
-      renderBk7();
       showToast("BK7 目录同步失败，请稍后重试");
     })
     .finally(() => {
@@ -393,6 +429,7 @@ function describeBk7Variant(file) {
 }
 
 function toggleBk7Group(group, checked) {
+  bk7BatchOffset = 0;
   for (const file of group.files) {
     if (checked) selectedBk7Urls.add(file.rawUrl);
     else selectedBk7Urls.delete(file.rawUrl);
@@ -402,6 +439,7 @@ function toggleBk7Group(group, checked) {
 }
 
 function toggleBk7File(file, checked) {
+  bk7BatchOffset = 0;
   if (checked) selectedBk7Urls.add(file.rawUrl);
   else selectedBk7Urls.delete(file.rawUrl);
   persistBk7Selection();
@@ -409,12 +447,14 @@ function toggleBk7File(file, checked) {
 }
 
 function selectFilteredBk7() {
+  bk7BatchOffset = 0;
   for (const group of filteredBk7Groups()) for (const file of group.files) selectedBk7Urls.add(file.rawUrl);
   persistBk7Selection();
   renderBk7();
 }
 
 function clearBk7Selection() {
+  bk7BatchOffset = 0;
   selectedBk7Urls.clear();
   persistBk7Selection();
   renderBk7();
@@ -432,21 +472,22 @@ function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
   els.importSelectedBk7.disabled = !hasSelection;
   els.bk7BatchBar.hidden = !hasSelection;
   els.bk7SelectedCount.textContent = `已选 ${selectedBk7Urls.size.toLocaleString()} 项`;
-  els.importSelectedBk7.textContent = selectedBk7Urls.size > MAX_IMPORT_LINKS ? `分批导入 ${selectedBk7Urls.size}` : `批量导入 ${selectedBk7Urls.size}`;
+  els.importSelectedBk7.textContent = selectedBk7Urls.size > MAX_IMPORT_LINKS
+    ? `导入第 ${Math.floor(bk7BatchOffset / MAX_IMPORT_LINKS) + 1}/${Math.ceil(selectedBk7Urls.size / MAX_IMPORT_LINKS)} 批`
+    : `批量导入 ${selectedBk7Urls.size}`;
 }
 
 function importSelectedBk7() {
   const selected = bk7Files.filter((file) => selectedBk7Urls.has(file.rawUrl));
   if (!selected.length) return;
-  const batch = selected.slice(0, MAX_IMPORT_LINKS);
+  const batch = selected.slice(bk7BatchOffset, bk7BatchOffset + MAX_IMPORT_LINKS);
   if (selected.length > MAX_IMPORT_LINKS) {
-    const confirmed = window.confirm(`一次导入最多 ${MAX_IMPORT_LINKS} 项，以避免 iOS 自定义链接过长。现在先导入前 ${MAX_IMPORT_LINKS} 项，其余 ${selected.length - MAX_IMPORT_LINKS} 项会保留在当前选择中。`);
+    const confirmed = window.confirm(`现在将第 ${Math.floor(bk7BatchOffset / MAX_IMPORT_LINKS) + 1} 批 ${batch.length} 项交给 Anywhere。已选项目不会自动清除，确认导入成功后可手动清空。`);
     if (!confirmed) return;
-    for (const file of batch) selectedBk7Urls.delete(file.rawUrl);
-    persistBk7Selection();
-    renderBk7();
   }
   openRuleSetImport(batch.map((file) => file.rawUrl));
+  bk7BatchOffset = bk7BatchOffset + batch.length >= selected.length ? 0 : bk7BatchOffset + batch.length;
+  updateBk7Controls();
 }
 
 function observeBk7Sentinel() {
@@ -464,28 +505,47 @@ async function loadMitm({ force = false } = {}) {
   setLoading(els.refreshMitm, true, "同步中");
   els.mitmStatus.textContent = "正在同步 GitHub main/mitm...";
   try {
-    const data = await fetchJson(`${MITM_API_URL}${force ? `&t=${Date.now()}` : ""}`, { force });
-    const mitmFiles = data.filter((item) => item.type === "file");
-    const rejectFiles = new Map(mitmFiles.filter((item) => item.name.endsWith(".arrs")).map((item) => [item.name.toLowerCase(), item]));
-    mitmScripts = mitmFiles
-      .filter((item) => item.name.endsWith(".amrs"))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((item) => ({
-        name: item.name.replace(/\.amrs$/i, ""),
-        title: item.name.replace(/\.amrs$/i, ""),
-        filename: item.name,
-        path: item.path,
-        rawUrl: `${RAW_BASE}/${item.path}`,
-        reject: findRejectForMitm(item, rejectFiles),
-        iconUrl: "",
-      }));
+    const catalog = await getRemoteCatalog("mitm", force);
+    if (catalog) {
+      mitmScripts = Object.entries(catalog.resources)
+        .filter(([path]) => path.startsWith("mitm/") && path.endsWith(".amrs"))
+        .map(([path, metadata]) => ({
+          name: path.split("/").pop().replace(/\.amrs$/i, ""),
+          title: metadata.title || path.split("/").pop().replace(/\.amrs$/i, ""),
+          filename: path.split("/").pop(),
+          path,
+          rawUrl: `${RAW_BASE}/${path}`,
+          reject: metadata.reject ? { rawUrl: `${RAW_BASE}/${metadata.reject}` } : null,
+          iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : "",
+          updated: metadata.updated || "",
+          version: metadata.version || "",
+          metadataLoaded: true,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      const data = await fetchJson(`${MITM_API_URL}${force ? `&t=${Date.now()}` : ""}`, { force });
+      const mitmFiles = data.filter((item) => item.type === "file");
+      const rejectFiles = new Map(mitmFiles.filter((item) => item.name.endsWith(".arrs")).map((item) => [item.name.toLowerCase(), item]));
+      mitmScripts = mitmFiles
+        .filter((item) => item.name.endsWith(".amrs"))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((item) => ({
+          name: item.name.replace(/\.amrs$/i, ""),
+          title: item.name.replace(/\.amrs$/i, ""),
+          filename: item.name,
+          path: item.path,
+          rawUrl: `${RAW_BASE}/${item.path}`,
+          reject: findRejectForMitm(item, rejectFiles),
+          iconUrl: "",
+        }));
+    }
+    enrichStoredMitmVersions();
     mitmMetadataPromise = undefined;
     renderMitm();
+    if (els.mitmUpdateSheet.open) refreshMitmSheet();
     els.mitmStatus.textContent = `已同步 ${mitmScripts.length} 个 MITM 脚本`;
     if (readInitialTab() === "mitm") void hydrateMitmMetadata(mitmScripts, force);
   } catch (error) {
-    mitmScripts = [];
-    renderMitm();
     els.mitmStatus.textContent = `同步失败：${error.message}`;
     showToast("MITM 脚本同步失败，请稍后重试");
   } finally {
@@ -495,25 +555,130 @@ async function loadMitm({ force = false } = {}) {
 
 function renderMitm() {
   const query = els.mitmSearch.value.trim().toLowerCase();
-  const filtered = mitmScripts.filter((script) => `${script.title} ${script.name} ${script.filename}`.toLowerCase().includes(query));
+  const updates = mitmScripts.filter((script) => hasMitmUpdate(mitmFollows[script.path], script));
+  els.mitmUpdateCount.textContent = String(updates.length);
+  els.mitmUpdatesFilter.setAttribute("aria-pressed", String(mitmUpdatesOnly));
+  els.mitmUpdatesFilter.classList.toggle("active", mitmUpdatesOnly);
+  const filtered = mitmScripts.filter((script) =>
+    (!mitmUpdatesOnly || hasMitmUpdate(mitmFollows[script.path], script)) &&
+    `${script.title} ${script.name} ${script.filename}`.toLowerCase().includes(query));
   const fragment = document.createDocumentFragment();
   for (const script of filtered) {
+    const followed = Boolean(mitmFollows[script.path]);
+    const hasUpdate = hasMitmUpdate(mitmFollows[script.path], script);
     const card = document.createElement("article");
     card.className = "resource-card";
+    card.dataset.path = script.path;
     card.innerHTML = `
-      <div class="resource-card-head">${resourceIcon("anywhere", script.iconUrl)}<span class="resource-kind">MITM</span></div>
+      <div class="resource-card-head">${resourceIcon("anywhere", script.iconUrl)}${hasUpdate
+        ? `<button class="mitm-update-badge" type="button" aria-label="查看 ${escapeHtml(script.title)} 的更新"><span class="update-dot" aria-hidden="true"></span>有更新</button>`
+        : `<button class="mitm-follow ${followed ? "followed" : ""}" type="button" aria-pressed="${followed}" aria-label="${followed ? "取消关注" : "关注"} ${escapeHtml(script.title)} 的更新" title="${followed ? "取消关注更新" : "关注更新"}"><svg viewBox="0 0 24 24" aria-hidden="true">${followed ? '<path d="m5 12 4.5 4.5L19 7"/>' : '<path d="M12 5v14M5 12h14"/>'}</svg><span>${followed ? "已关注" : "关注"}</span></button>`}</div>
       <div class="resource-card-copy"><h3>${escapeHtml(script.title)}</h3><p>${script.reject ? "脚本与配套 Reject 规则将一并导入" : "请求与响应改写脚本"}</p></div>
       <div class="resource-meta"><span>.amrs</span><span>${script.reject ? "含 Reject" : "脚本规则"}</span></div>
-      <div class="resource-actions"><a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="导入 ${escapeHtml(script.title)}">一键导入</button></div>
+      <div class="resource-stats"><span class="resource-stat-pill download-stat" data-import-path="${escapeHtml(script.path)}">${importCountText(script.path)}</span>${script.updated ? `<time class="resource-stat-pill update-stat" datetime="${escapeHtml(script.updated)}">${escapeHtml(script.updated)}</time>` : ""}</div>
+      <div class="resource-actions"><a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="${hasUpdate ? "查看更新" : "导入"} ${escapeHtml(script.title)}">${hasUpdate ? "查看更新" : "一键导入"}</button></div>
     `;
+    card.querySelector(".mitm-update-badge")?.addEventListener("click", (event) => openMitmSheet(script, event.currentTarget));
+    card.querySelector(".mitm-follow")?.addEventListener("click", () => toggleMitmFollow(script));
     card.querySelector(".resource-import").addEventListener("click", () => {
-      openRuleSetImport([script.rawUrl, script.reject?.rawUrl].filter(Boolean));
+      if (hasUpdate) {
+        openMitmSheet(script, card.querySelector(".resource-import"));
+        return;
+      }
+      openRuleSetImport([script.rawUrl, script.reject?.rawUrl].filter(Boolean), [script.path]);
     });
     hydrateResourceIcon(card);
     fragment.append(card);
   }
-  if (!filtered.length) fragment.append(emptyState("没有匹配的 MITM 脚本"));
+  if (!filtered.length) {
+    const empty = emptyState(mitmUpdatesOnly ? "当前没有待处理的脚本更新。关注脚本后，有新版本时会出现在这里。" : "没有匹配的 MITM 脚本");
+    if (mitmUpdatesOnly) {
+      const showAll = document.createElement("button");
+      showAll.type = "button";
+      showAll.className = "button secondary";
+      showAll.textContent = "查看全部脚本";
+      showAll.addEventListener("click", () => {
+        mitmUpdatesOnly = false;
+        els.mitmSearch.value = "";
+        renderMitm();
+        els.mitmUpdatesFilter.focus();
+      });
+      empty.append(showAll);
+    }
+    fragment.append(empty);
+  }
   els.mitmList.replaceChildren(fragment);
+}
+
+function enrichStoredMitmVersions() {
+  const next = enrichMitmFollows(mitmFollows, mitmScripts);
+  if (next !== mitmFollows && saveMitmFollows(window.localStorage, next)) mitmFollows = next;
+}
+
+function updateMitmFollows(next, message) {
+  if (!saveMitmFollows(window.localStorage, next)) {
+    showToast("当前浏览器无法保存关注状态");
+    return false;
+  }
+  mitmFollows = next;
+  renderMitm();
+  showToast(message);
+  return true;
+}
+
+function toggleMitmFollow(script) {
+  const next = { ...mitmFollows };
+  if (next[script.path]) {
+    delete next[script.path];
+    if (!updateMitmFollows(next, `已取消关注 ${script.title}`)) return;
+  } else {
+    next[script.path] = mitmVersion(script);
+    if (!updateMitmFollows(next, `已关注 ${script.title} 的更新`)) return;
+  }
+  [...els.mitmList.querySelectorAll(".resource-card")]
+    .find((card) => card.dataset.path === script.path)
+    ?.querySelector(".mitm-follow")?.focus({ preventScroll: true });
+}
+
+function openMitmSheet(script, trigger) {
+  mitmSheetTrigger = trigger;
+  activeMitmSheetPath = script.path;
+  refreshMitmSheet();
+  document.body.classList.add("mitm-sheet-open");
+  els.mitmUpdateSheet.showModal();
+}
+
+function refreshMitmSheet() {
+  const script = mitmScripts.find((item) => item.path === activeMitmSheetPath);
+  if (!script || !hasMitmUpdate(mitmFollows[script.path], script)) {
+    if (els.mitmUpdateSheet.open) closeMitmSheet();
+    return;
+  }
+  els.mitmSheetIcon.innerHTML = resourceIcon("anywhere", script.iconUrl);
+  hydrateResourceIcon(els.mitmSheetIcon);
+  els.mitmSheetTitle.textContent = script.title;
+  els.mitmSheetPrevious.textContent = mitmFollows[script.path].updated || "日期未知";
+  els.mitmSheetCurrent.textContent = script.updated || "日期未知";
+  els.mitmSheetRaw.href = script.rawUrl;
+}
+
+function closeMitmSheet() {
+  if (els.mitmUpdateSheet.open) els.mitmUpdateSheet.close();
+}
+
+function confirmMitmUpdate() {
+  const script = mitmScripts.find((item) => item.path === activeMitmSheetPath);
+  if (!script) return closeMitmSheet();
+  const next = { ...mitmFollows, [script.path]: mitmVersion(script) };
+  if (updateMitmFollows(next, `已记录 ${script.title} 为当前版本`)) closeMitmSheet();
+}
+
+function unfollowFromMitmSheet() {
+  const script = mitmScripts.find((item) => item.path === activeMitmSheetPath);
+  if (!script) return closeMitmSheet();
+  const next = { ...mitmFollows };
+  delete next[script.path];
+  if (updateMitmFollows(next, `已取消关注 ${script.title}`)) closeMitmSheet();
 }
 
 async function parseSelectedFile() {
@@ -695,7 +860,7 @@ function hydrateRuleMetadata(ruleSets, force = false) {
 }
 
 function hydrateMitmMetadata(scripts, force = false) {
-  if (mitmMetadataPromise || !scripts.length) return mitmMetadataPromise;
+  if (mitmMetadataPromise || !scripts.length || scripts.every((script) => script.metadataLoaded)) return mitmMetadataPromise;
   mitmMetadataPromise = hydrateResourceMetadata(scripts, "mitm", force).finally(() => {
     if (mitmScripts === scripts) mitmMetadataPromise = undefined;
   });
@@ -703,17 +868,20 @@ function hydrateMitmMetadata(scripts, force = false) {
 }
 
 async function hydrateResourceMetadata(resources, type, force) {
-  const metadataByPath = await getEmbeddedResourceMetadata(type);
+  const metadataByPath = await getEmbeddedResourceMetadata(type, force);
   const current = type === "common" ? () => rules : () => mitmScripts;
   if (current() !== resources) return;
   let changed = false;
   for (let index = 0; index < resources.length; index += 1) {
     const metadata = metadataByPath[resources[index].path];
     if (!metadata) continue;
-    resources[index] = { ...resources[index], title: metadata.title || resources[index].title, iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : resources[index].iconUrl, metadataLoaded: true };
+    resources[index] = { ...resources[index], title: metadata.title || resources[index].title, iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : resources[index].iconUrl, updated: metadata.updated || "", version: metadata.version || "", metadataLoaded: true };
     changed = true;
   }
-  if (changed) type === "common" ? renderRules() : renderMitm();
+  if (changed) {
+    if (type === "mitm") enrichStoredMitmVersions();
+    type === "common" ? renderRules() : renderMitm();
+  }
   const pending = resources.map((resource, index) => ({ resource, index })).filter(({ resource }) => !resource.metadataLoaded);
   await mapWithConcurrency(pending, async ({ resource, index }) => {
     const metadata = await fetchRuleSetMetadata(resource.rawUrl, resource, force);
@@ -742,7 +910,20 @@ function readRuleSetMetadata(source) {
   return { ...(title ? { title } : {}), ...(icon ? { iconUrl: `data:image/png;base64,${icon}` } : {}) };
 }
 
-async function getEmbeddedResourceMetadata(type) {
+async function getRemoteCatalog(type, force = false) {
+  if (force) catalogPromises.delete(type);
+  if (!catalogPromises.has(type)) {
+    const url = `${CATALOG_URLS[type]}${force ? `?t=${Date.now()}` : ""}`;
+    catalogPromises.set(type, fetchJson(url, { force, cache: "default" })
+      .then((data) => data?.resources && Object.keys(data.resources).length ? data : null)
+      .catch(() => null));
+  }
+  return catalogPromises.get(type);
+}
+
+async function getEmbeddedResourceMetadata(type, force = false) {
+  const catalog = await getRemoteCatalog(type, force);
+  if (catalog) return catalog.resources;
   if (!embeddedMetadataPromises.has(type)) {
     embeddedMetadataPromises.set(type, fetch(METADATA_URLS[type], { cache: "force-cache" })
       .then((response) => response.ok ? response.json() : {})
@@ -779,15 +960,44 @@ function hydrateResourceIcon(container) {
   if (image.complete && image.naturalWidth > 0) reveal();
 }
 
-async function fetchJson(url, { force = false } = {}) {
-  const response = await fetch(url, { cache: force ? "no-store" : "force-cache", headers: { Accept: "application/json" } });
+async function fetchJson(url, { force = false, cache = "no-cache" } = {}) {
+  const response = await fetch(url, { cache: force ? "no-store" : cache, headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
 
-function openRuleSetImport(links) {
+async function loadImportStats() {
+  try {
+    const data = await fetchJson("./api/import-stats");
+    importCounts = data.counts || {};
+    importCountsLoaded = true;
+    refreshImportCountLabels();
+  } catch {
+    importCountsLoaded = false;
+  }
+}
+
+function importCountText(path) {
+  return importCountsLoaded ? `下载量 ${formatRuleCount(importCounts[path] || 0)}` : "";
+}
+
+function refreshImportCountLabels() {
+  for (const label of document.querySelectorAll("[data-import-path]")) {
+    label.textContent = importCountText(label.dataset.importPath);
+  }
+}
+
+function recordImport(paths) {
+  if (!paths.length) return;
+  const body = new Blob([JSON.stringify({ paths })], { type: "application/json" });
+  if (navigator.sendBeacon?.("./api/import-stats", body)) return;
+  void fetch("./api/import-stats", { method: "POST", body, keepalive: true }).catch(() => {});
+}
+
+function openRuleSetImport(links, paths = []) {
   const validLinks = links.filter(Boolean);
   if (!validLinks.length) return;
+  recordImport(paths);
   window.location.href = `anywhere://add-rule-set?${validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&")}`;
   showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
 }

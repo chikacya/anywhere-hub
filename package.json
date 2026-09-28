@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "/Users/hailong/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node tests/run-tests.mjs",
-    "serve": "/Users/hailong/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m http.server 4173 --directory public",
+    "test": "node tests/run-tests.mjs",
+    "serve": "wrangler dev --port 4175",
     "sync:resource-metadata": "node scripts/sync-resource-metadata.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "^4.95.0"
+    "wrangler": "^4.142.0"
   }
 }

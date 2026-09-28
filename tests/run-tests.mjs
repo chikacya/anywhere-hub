@@ -7,8 +7,23 @@ import { attributeProxyTargets } from "../public/lib/attribution.mjs";
 import { normalizeTarget } from "../public/lib/normalize.mjs";
 import { parsePrivacyReportText } from "../public/lib/parser.mjs";
 import { createZip } from "../public/lib/zip.mjs";
+import { enrichMitmFollows, hasMitmUpdate, mitmVersion, readMitmFollows, saveMitmFollows } from "../public/lib/mitm-updates.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+const saved = new Map();
+const storage = { getItem: (key) => saved.get(key), setItem: (key, value) => saved.set(key, value) };
+const original = { updated: "2026-09-20", version: "abc" };
+assert.equal(saveMitmFollows(storage, { "mitm/Test.amrs": mitmVersion(original) }), true);
+assert.deepEqual(readMitmFollows(storage)["mitm/Test.amrs"], { updated: "2026-09-20", revision: "abc" });
+assert.equal(hasMitmUpdate(mitmVersion(original), { updated: "2026-09-28", version: "abc" }), false);
+assert.equal(hasMitmUpdate(mitmVersion(original), { updated: "2026-09-20", version: "def" }), true);
+assert.equal(hasMitmUpdate({ updated: "2026-09-20", revision: "" }, { updated: "2026-09-28" }), true);
+assert.equal(hasMitmUpdate({ updated: "2026-09-20", revision: "" }, { updated: "2026-09-20", version: "def" }), false);
+assert.deepEqual(enrichMitmFollows({ "mitm/Test.amrs": { updated: "2026-09-20", revision: "" } }, [{ path: "mitm/Test.amrs", updated: "2026-09-20", version: "def" }])["mitm/Test.amrs"], { updated: "2026-09-20", revision: "def" });
+assert.equal(hasMitmUpdate(enrichMitmFollows({ "mitm/Test.amrs": { updated: "2026-09-20", revision: "" } }, [{ path: "mitm/Test.amrs", updated: "2026-09-20", version: "def" }])["mitm/Test.amrs"], { updated: "2026-09-20", version: "ghi" }), true);
+saved.set("anywhere-hub-mitm-follows-v1", "not JSON");
+assert.deepEqual(readMitmFollows(storage), {});
 const fixture = path.join(root, "App_Privacy_Report_v4_2026-06-11T22_12_39.ndjson");
 
 assert.deepEqual(normalizeTarget("Example.COM."), {
