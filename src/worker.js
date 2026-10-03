@@ -6,14 +6,14 @@ const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main
 
 async function resourceCatalog(request, env, kind) {
   const url = new URL(request.url);
-  const bust = url.searchParams.has("t") ? `?t=${Date.now()}` : "";
+  const bust = url.searchParams.has("t") ? `?t=${Date.now()}` : `?v=${Math.floor(Date.now() / 60000)}`;
   try {
     const response = await fetch(`${RAW_BASE}/hub/${kind}.json${bust}`);
     if (response.ok) {
       const data = await response.json();
       if (data?.resources && Object.keys(data.resources).length) {
         return new Response(JSON.stringify(data), {
-          headers: { ...JSON_HEADERS, "cache-control": "public, max-age=300" },
+          headers: { ...JSON_HEADERS, "cache-control": "public, max-age=60" },
         });
       }
     }

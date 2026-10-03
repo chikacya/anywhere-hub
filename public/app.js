@@ -15,6 +15,7 @@ const METADATA_URLS = {
 const METADATA_READ_BYTES = 48 * 1024;
 const BK7_PAGE_SIZE = 72;
 const MAX_IMPORT_LINKS = 48;
+const CATALOG_REFRESH_MS = 2 * 60 * 1000;
 const BK7_SELECTION_KEY = "anywhere-hub-bk7-selection";
 
 const els = {
@@ -110,6 +111,8 @@ let activeMitmSheetPath = "";
 let mitmSheetTrigger;
 const embeddedMetadataPromises = new Map();
 const catalogPromises = new Map();
+const catalogCheckedAt = new Map();
+const catalogRefreshes = new Map();
 
 initTheme();
 bindEvents();
@@ -167,6 +170,11 @@ function bindEvents() {
   });
   els.appSearch.addEventListener("input", renderApps);
   window.addEventListener("hashchange", () => activateTab(readInitialTab(), { updateHash: false }));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void refreshActiveCatalog();
+  });
+  window.addEventListener("pageshow", () => void refreshActiveCatalog());
+  window.setInterval(() => void refreshActiveCatalog(), 30 * 1000);
 }
 
 function readInitialTab() {
@@ -193,6 +201,7 @@ function activateTab(name, { updateHash = true } = {}) {
     if (activeLibrary() === "bk7") void loadBk7();
   }
   if (name === "mitm") void hydrateMitmMetadata(mitmScripts);
+  void refreshActiveCatalog();
 }
 
 function activeLibrary() {
@@ -213,6 +222,7 @@ function activateLibrary(name) {
   window.scrollTo(0, 0);
   if (name === "common") void hydrateRuleMetadata(rules);
   if (name === "bk7") void loadBk7();
+  if (name === "common") void refreshActiveCatalog();
 }
 
 async function loadRepositoryData() {
@@ -913,12 +923,45 @@ function readRuleSetMetadata(source) {
 async function getRemoteCatalog(type, force = false) {
   if (force) catalogPromises.delete(type);
   if (!catalogPromises.has(type)) {
+    catalogCheckedAt.set(type, Date.now());
     const url = `${CATALOG_URLS[type]}${force ? `?t=${Date.now()}` : ""}`;
     catalogPromises.set(type, fetchJson(url, { force, cache: "default" })
       .then((data) => data?.resources && Object.keys(data.resources).length ? data : null)
       .catch(() => null));
   }
   return catalogPromises.get(type);
+}
+
+function catalogHasChanges(type, catalog) {
+  const resources = type === "common" ? rules : mitmScripts;
+  const entries = Object.entries(catalog.resources)
+    .filter(([path]) => type === "common" ? /^rules\/common\/[^/]+\.arrs$/i.test(path) : /^mitm\/[^/]+\.amrs$/i.test(path));
+  if (entries.length !== resources.length) return true;
+  const current = new Map(resources.map((resource) => [resource.path, resource]));
+  return entries.some(([path, metadata]) => {
+    const resource = current.get(path);
+    return !resource || resource.title !== (metadata.title || resource.name) ||
+      resource.updated !== (metadata.updated || "") ||
+      resource.iconUrl !== (metadata.icon ? `data:image/png;base64,${metadata.icon}` : "") ||
+      (type === "mitm" && (resource.version !== (metadata.version || "") ||
+        (resource.reject?.rawUrl || "") !== (metadata.reject ? `${RAW_BASE}/${metadata.reject}` : "")));
+  });
+}
+
+function refreshActiveCatalog() {
+  if (document.hidden) return;
+  const type = readInitialTab() === "mitm" ? "mitm" : readInitialTab() === "library" && activeLibrary() === "common" ? "common" : "";
+  if (!type || !(type === "common" ? rules : mitmScripts).length ||
+      Date.now() - (catalogCheckedAt.get(type) || 0) < CATALOG_REFRESH_MS) return;
+  if (catalogRefreshes.has(type)) return catalogRefreshes.get(type);
+  const refresh = (async () => {
+    const catalog = await getRemoteCatalog(type, true);
+    if (!catalog || !catalogHasChanges(type, catalog)) return;
+    if (type === "mitm") await loadMitm();
+    else await loadRules();
+  })().finally(() => catalogRefreshes.delete(type));
+  catalogRefreshes.set(type, refresh);
+  return refresh;
 }
 
 async function getEmbeddedResourceMetadata(type, force = false) {
