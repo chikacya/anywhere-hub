@@ -1,4 +1,4 @@
-import {initializeStartupSelector} from './lib/startup-selector.mjs';
+import {initializeStartupSelector} from './lib/startup-selector.mjs?v=2';
 let startupSelector;
 import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";

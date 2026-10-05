@@ -12,3 +12,5 @@ dialog{height:min(680px,calc(100dvh - 70px))}dialog[open]{display:flex;flex-dire
 .selector-options>.search-box{flex:0 0 auto;min-height:44px}.selector-options .selection-list{flex:1 1 0}
 
 .result-tools{display:flex;justify-content:space-between;align-items:center;flex-shrink:0;margin-bottom:6px}.result-tools .results-label{margin:0}.result-tools .text-button{min-height:28px;font-size:11px}.source-note{line-height:1.6!important;font-size:11px!important}.sheet-head .sheet-title{align-items:flex-start}
+
+.sheet-head{gap:16px}.sheet-title{min-width:0}#close{display:grid;place-items:center;flex:0 0 32px;min-height:32px;padding:0;line-height:1}#close svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
