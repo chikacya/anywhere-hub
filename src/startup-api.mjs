@@ -4,7 +4,7 @@ const engine=createSelectionEngine(bundle);
 export async function startupAPI(request, env, ctx) {
  const url=new URL(request.url);if(!url.pathname.startsWith('/api/startup/'))return null;
  if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405,headers:{allow:'GET, HEAD'}});
- if(url.pathname==='/api/startup/catalog')return Response.json({schemaVersion:1,ids:bundle.ids,apps:bundle.apps,revision:bundle.revision,version:bundle.version,updated:bundle.updated},{headers:{'cache-control':'public, max-age=60'}});
+ if(url.pathname==='/api/startup/catalog')return Response.json({schemaVersion:1,mitmLimitations:bundle.mitmLimitations,ids:bundle.ids,apps:bundle.apps,revision:bundle.revision,version:bundle.version,updated:bundle.updated},{headers:{'cache-control':'public, max-age=60'}});
  const match=url.pathname.match(/^\/api\/startup\/(mitm\.amrs|direct\.arrs|reject\.arrs)$/);if(!match)return new Response('Not found',{status:404});
  try{
   const ids=engine.decode(url.searchParams.get('s'));if(!ids.length)throw Error('Select at least one application');const code=engine.encode(ids),type=match[1].split('.')[0],etag=`"${bundle.revision}-${code}-${type}"`;
