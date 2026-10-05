@@ -15,3 +15,9 @@ Anywhere 规则集、MITM 脚本导入与本地隐私报告转换工具。规则
 首次发布应先推送 `anywhere-rules` 中的 `hub/` 目录、生成脚本和 GitHub Actions 工作流，再部署 Hub。此后上游新增或修改脚本时，不需要重新构建 Hub。可运行 `npm run sync:resource-metadata` 更新 Hub 的离线回退快照。
 
 部署使用 `npm run deploy`。首次部署会通过 Wrangler migration 创建 `ImportStats` Durable Object；生产计数与本地开发计数彼此独立。
+
+## 应用开屏选择
+
+MITM脚本页的“应用开屏去广告”支持应用自选、全选、分享组合和选择文件导入/导出。选择链接可刷新更新，不保存每用户服务端状态。三份输出按所选应用生成；全选基线在 anywhere-rules 正式仓库。总集仅经过静态翻译检查，未做实机广告效果验证。
+
+`src/generated/startup-bundle.json` 和 `public/lib/startup-core.mjs` 从 anywhere-mitm-workflow 的 `npm run startup-selection-build` 生成；ID字典仅追加，目录升级与重新部署一起进行。线上验证命令在维护仓库执行：`node tools/test-startup-api.mjs https://anywhere-hub.1628519350.workers.dev`。

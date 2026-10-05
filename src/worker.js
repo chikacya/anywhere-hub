@@ -1,3 +1,4 @@
+import {startupAPI} from './startup-api.mjs';
 import { DurableObject } from "cloudflare:workers";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
@@ -43,7 +44,9 @@ export class ImportStats extends DurableObject {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
+    const startup = await startupAPI(request, env, ctx);
+    if (startup) return startup;
     const url = new URL(request.url);
     const catalogKind = url.pathname.match(/^\/api\/catalog\/(common|mitm)$/)?.[1];
     if (catalogKind) {

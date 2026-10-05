@@ -1,11 +1,15 @@
-const CACHE_NAME = "anywhere-hub-shell-v37";
+const CACHE_NAME = "anywhere-hub-shell-v38";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css?v=20260928-hub-updates5",
-  "./app.js?v=20261003-catalog-refresh2",
+  "./app.js?v=20261005-startup1",
   "./manifest.webmanifest?v=logo-original",
   "./report-worker.js",
+  "./startup-selector.css?v=1",
+  "./lib/startup-core.mjs",
+  "./lib/startup-selector.mjs",
+  "./icons/startup-ads.png",
   "./lib/arrs.mjs",
   "./lib/attribution.mjs",
   "./lib/bundle-names.mjs",

@@ -1,3 +1,5 @@
+import {initializeStartupSelector} from './lib/startup-selector.mjs';
+let startupSelector;
 import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";
 import { createZip } from "./lib/zip.mjs";
@@ -564,6 +566,12 @@ async function loadMitm({ force = false } = {}) {
 }
 
 function renderMitm() {
+  if (startupSelector) {
+    let collection=mitmScripts.find(s=>s.path==='mitm/StartupAds.amrs');
+    if(!collection){collection={path:'mitm/StartupAds.amrs',title:'应用开屏去广告',name:'StartupAds',filename:'StartupAds.amrs',rawUrl:'https://raw.githubusercontent.com/chikacya/anywhere-rules/main/mitm/StartupAds.amrs',iconUrl:'/icons/startup-ads.png',updated:startupSelector.catalog.updated};mitmScripts.unshift(collection);}
+    const position=mitmScripts.indexOf(collection);if(position>0){mitmScripts.splice(position,1);mitmScripts.unshift(collection);}
+    collection.version=startupSelector.revision;
+  }
   const query = els.mitmSearch.value.trim().toLowerCase();
   const updates = mitmScripts.filter((script) => hasMitmUpdate(mitmFollows[script.path], script));
   els.mitmUpdateCount.textContent = String(updates.length);
@@ -571,7 +579,7 @@ function renderMitm() {
   els.mitmUpdatesFilter.classList.toggle("active", mitmUpdatesOnly);
   const filtered = mitmScripts.filter((script) =>
     (!mitmUpdatesOnly || hasMitmUpdate(mitmFollows[script.path], script)) &&
-    `${script.title} ${script.name} ${script.filename}`.toLowerCase().includes(query));
+    `${script.title} ${script.name} ${script.filename} ${script.path==='mitm/StartupAds.amrs'&&startupSelector?startupSelector.catalog.apps.map(a=>a.label).join(' '):''}`.toLowerCase().includes(query));
   const fragment = document.createDocumentFragment();
   for (const script of filtered) {
     const followed = Boolean(mitmFollows[script.path]);
@@ -591,12 +599,14 @@ function renderMitm() {
     card.querySelector(".mitm-update-badge")?.addEventListener("click", (event) => openMitmSheet(script, event.currentTarget));
     card.querySelector(".mitm-follow")?.addEventListener("click", () => toggleMitmFollow(script));
     card.querySelector(".resource-import").addEventListener("click", () => {
+      if (script.path === "mitm/StartupAds.amrs" && startupSelector) { startupSelector.open(card.querySelector(".resource-import"), query); return; }
       if (hasUpdate) {
         openMitmSheet(script, card.querySelector(".resource-import"));
         return;
       }
       openRuleSetImport([script.rawUrl, script.reject?.rawUrl].filter(Boolean), [script.path]);
     });
+    if(script.path==='mitm/StartupAds.amrs'&&startupSelector){card.querySelector('.resource-import').textContent=startupSelector.count?'调整组合':'选择应用';card.querySelector('.resource-import').setAttribute('aria-label','选择应用');card.querySelector('.resource-card-copy p').textContent='组合常用应用，按需去开屏';card.querySelector('.resource-meta').innerHTML='<span>.amrs</span><span>可自选</span><span>静态转换</span>';}
     hydrateResourceIcon(card);
     fragment.append(card);
   }
@@ -1108,3 +1118,5 @@ function dismissInstallHint() {
   localStorage.setItem("anywhere-hub-install-hint-dismissed", "1");
   els.installHint.hidden = true;
 }
+
+initializeStartupSelector({onChange:()=>renderMitm()}).then(value=>{startupSelector=value;renderMitm();}).catch(error=>showToast("开屏选择加载失败："+error.message));
