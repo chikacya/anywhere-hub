@@ -1,3 +1,4 @@
+import {moduleAPI} from './module-api.mjs';
 import {startupAPI} from './startup-api.mjs';
 import { DurableObject } from "cloudflare:workers";
 
@@ -45,6 +46,8 @@ export class ImportStats extends DurableObject {
 
 export default {
   async fetch(request, env, ctx) {
+    const module = await moduleAPI(request, env, ctx);
+    if (module) return module;
     const startup = await startupAPI(request, env, ctx);
     if (startup) return startup;
     const url = new URL(request.url);

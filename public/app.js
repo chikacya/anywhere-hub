@@ -1,4 +1,4 @@
-import {initializeStartupSelector} from './lib/startup-selector.mjs?v=3';
+import {initializeStartupSelector} from './lib/startup-selector.mjs?v=397-dual-entry2';
 let startupSelector;
 import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";
@@ -150,14 +150,16 @@ function bindEvents() {
     if (mitmSheetTrigger?.isConnected) mitmSheetTrigger.focus();
     mitmSheetTrigger = null;
   });
-  els.importSelectedRules.addEventListener("click", importSelectedRules);
+  document.querySelector("#moduleSelectedRules").addEventListener("click", () => importSelectedRules(true));
+  document.querySelector("#moduleSelectedBk7").addEventListener("click", () => importSelectedBk7(true));
+  els.importSelectedRules.addEventListener("click", () => importSelectedRules());
 
   els.refreshBk7.addEventListener("click", () => loadBk7({ force: true }));
   els.bk7Search.addEventListener("input", scheduleRenderBk7);
   els.bk7SelectVisible.addEventListener("click", selectFilteredBk7);
   els.bk7ClearSelection.addEventListener("click", clearBk7Selection);
   els.bk7LoadMore.addEventListener("click", loadMoreBk7);
-  els.importSelectedBk7.addEventListener("click", importSelectedBk7);
+  els.importSelectedBk7.addEventListener("click", () => importSelectedBk7());
 
   els.parse.addEventListener("click", parseSelectedFile);
   els.downloadSelected.addEventListener("click", () => downloadArtifact([...selectedBundleIDs]));
@@ -281,6 +283,7 @@ function renderRules() {
     `;
     card.querySelector(".row-select").addEventListener("change", (event) => toggleRuleSelection(rule, event.currentTarget.checked));
     card.querySelector(".resource-import").addEventListener("click", () => openRuleSetImport([rule.rawUrl], [rule.path]));
+    addModuleButton(card, [rule.rawUrl], [rule.path]);
     hydrateResourceIcon(card);
     fragment.append(card);
   }
@@ -296,13 +299,14 @@ function toggleRuleSelection(rule, checked) {
 }
 
 function updateRuleImportButtons() {
+  document.querySelector("#moduleSelectedRules").disabled = selectedRuleUrls.size === 0;
   els.importSelectedRules.disabled = selectedRuleUrls.size === 0;
   els.importSelectedRules.textContent = selectedRuleUrls.size ? `导入所选 ${selectedRuleUrls.size}` : "导入所选";
 }
 
-function importSelectedRules() {
+function importSelectedRules(asModule = false) {
   const selected = rules.filter((rule) => selectedRuleUrls.has(rule.rawUrl));
-  openRuleSetImport(selected.map((rule) => rule.rawUrl), selected.map((rule) => rule.path));
+  (asModule ? openModuleImport : openRuleSetImport)(selected.map((rule) => rule.rawUrl), selected.map((rule) => rule.path));
 }
 
 async function loadBk7({ force = false } = {}) {
@@ -481,6 +485,7 @@ function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
   const hasSelection = selectedBk7Urls.size > 0;
   els.bk7SelectVisible.disabled = filteredCount === 0;
   els.bk7ClearSelection.disabled = !hasSelection;
+  document.querySelector("#moduleSelectedBk7").disabled = !hasSelection;
   els.importSelectedBk7.disabled = !hasSelection;
   els.bk7BatchBar.hidden = !hasSelection;
   els.bk7SelectedCount.textContent = `已选 ${selectedBk7Urls.size.toLocaleString()} 项`;
@@ -489,7 +494,7 @@ function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
     : `批量导入 ${selectedBk7Urls.size}`;
 }
 
-function importSelectedBk7() {
+function importSelectedBk7(asModule = false) {
   const selected = bk7Files.filter((file) => selectedBk7Urls.has(file.rawUrl));
   if (!selected.length) return;
   const batch = selected.slice(bk7BatchOffset, bk7BatchOffset + MAX_IMPORT_LINKS);
@@ -497,7 +502,7 @@ function importSelectedBk7() {
     const confirmed = window.confirm(`现在将第 ${Math.floor(bk7BatchOffset / MAX_IMPORT_LINKS) + 1} 批 ${batch.length} 项交给 Anywhere。已选项目不会自动清除，确认导入成功后可手动清空。`);
     if (!confirmed) return;
   }
-  openRuleSetImport(batch.map((file) => file.rawUrl));
+  (asModule ? openModuleImport : openRuleSetImport)(batch.map((file) => file.rawUrl));
   bk7BatchOffset = bk7BatchOffset + batch.length >= selected.length ? 0 : bk7BatchOffset + batch.length;
   updateBk7Controls();
 }
@@ -591,8 +596,8 @@ function renderMitm() {
       <div class="resource-card-head">${resourceIcon("anywhere", script.iconUrl)}${hasUpdate
         ? `<button class="mitm-update-badge" type="button" aria-label="查看 ${escapeHtml(script.title)} 的更新"><span class="update-dot" aria-hidden="true"></span>有更新</button>`
         : `<button class="mitm-follow ${followed ? "followed" : ""}" type="button" aria-pressed="${followed}" aria-label="${followed ? "取消关注" : "关注"} ${escapeHtml(script.title)} 的更新" title="${followed ? "取消关注更新" : "关注更新"}"><svg viewBox="0 0 24 24" aria-hidden="true">${followed ? '<path d="m5 12 4.5 4.5L19 7"/>' : '<path d="M12 5v14M5 12h14"/>'}</svg><span>${followed ? "已关注" : "关注"}</span></button>`}</div>
-      <div class="resource-card-copy"><h3>${escapeHtml(script.title)}</h3><p>${script.reject ? "脚本与配套 Reject 规则将一并导入" : "请求与响应改写脚本"}</p></div>
-      <div class="resource-meta"><span>.amrs</span><span>${script.reject ? "含 Reject" : "脚本规则"}</span></div>
+      <div class="resource-card-copy"><h3>${escapeHtml(script.title)}</h3><p>${script.reject ? "脚本含配套 Reject；模块入口需 397+" : "保留规则集导入；模块入口需 397+"}</p></div>
+      <div class="resource-meta"><span>.amrs / .amod</span><span>${script.reject ? "含 Reject" : "脚本规则"}</span></div>
       <div class="resource-stats"><span class="resource-stat-pill download-stat" data-import-path="${escapeHtml(script.path)}">${importCountText(script.path)}</span>${script.updated ? `<time class="resource-stat-pill update-stat" datetime="${escapeHtml(script.updated)}">${escapeHtml(script.updated)}</time>` : ""}</div>
       <div class="resource-actions"><a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="${hasUpdate ? "查看更新" : "导入"} ${escapeHtml(script.title)}">${hasUpdate ? "查看更新" : "一键导入"}</button></div>
     `;
@@ -606,7 +611,8 @@ function renderMitm() {
       }
       openRuleSetImport([script.rawUrl, script.reject?.rawUrl].filter(Boolean), [script.path]);
     });
-    if(script.path==='mitm/StartupAds.amrs'&&startupSelector){card.querySelector('.resource-import').textContent=startupSelector.count?'调整组合':'选择应用';card.querySelector('.resource-import').setAttribute('aria-label','选择应用');card.querySelector('.resource-card-copy p').textContent='组合常用应用，按需去开屏';card.querySelector('.resource-meta').innerHTML='<span>.amrs</span><span>可自选</span><span>静态转换</span>';}
+    if (script.path !== 'mitm/StartupAds.amrs') addModuleButton(card, [script.rawUrl, script.reject?.rawUrl].filter(Boolean), [script.path]);
+    if(script.path==='mitm/StartupAds.amrs'&&startupSelector){card.querySelector('.resource-import').textContent=startupSelector.count?'调整组合':'选择应用';card.querySelector('.resource-import').setAttribute('aria-label','选择应用');card.querySelector('.resource-card-copy p').textContent='组合常用应用，按需去开屏';card.querySelector('.resource-meta').innerHTML='<span>.amrs / .amod</span><span>可自选</span><span>静态转换</span>';}
     hydrateResourceIcon(card);
     fragment.append(card);
   }
@@ -1047,12 +1053,45 @@ function recordImport(paths) {
   void fetch("./api/import-stats", { method: "POST", body, keepalive: true }).catch(() => {});
 }
 
+function addModuleButton(card, links, paths) {
+  const button = document.createElement('button');
+  button.className = 'resource-module preview-link';
+  button.type = 'button';
+  button.textContent = '添加模块 · 397+';
+  button.addEventListener('click', () => openModuleImport(links, paths));
+  card.querySelector('.resource-actions').append(button);
+}
+
 function openRuleSetImport(links, paths = []) {
   const validLinks = links.filter(Boolean);
   if (!validLinks.length) return;
   recordImport(paths);
   window.location.href = `anywhere://add-rule-set?${validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&")}`;
   showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
+}
+
+
+async function openModuleImport(links, paths = []) {
+  const validLinks = links.filter(Boolean);
+  if (!validLinks.length) return;
+  try {
+    const files = validLinks.map(link => {
+      if (!link.startsWith(RAW_BASE + "/")) throw Error("规则来源不支持模块导入");
+      return link.slice(RAW_BASE.length + 1);
+    });
+    const mitm = files.find(path => /^mitm\/[A-Za-z0-9_-]+\.amrs$/.test(path));
+    const metadata = mitm ? (await getEmbeddedResourceMetadata('mitm', true))[mitm] : null;
+    const published = metadata?.module && /^modules\/[A-Za-z0-9_-]+\.amod$/.test(metadata.module) ? metadata.module : null;
+    const moduleURL = new URL(mitm
+      ? published ? `${RAW_BASE}/${published}` : `/api/modules/${mitm.split('/').pop().replace(/\.amrs$/, '')}.amod`
+      : '/api/modules/selection.amod', location.origin);
+    if (!mitm) moduleURL.searchParams.set('paths', [...new Set(files)].sort().join(','));
+    const response = await fetch(moduleURL.href);
+    if (!response.ok) { const value = await response.json().catch(() => ({})); throw Error(value.error || "模块生成失败"); }
+    recordImport(paths);
+    window.location.href = `anywhere://add-module?link=${encodeURIComponent(moduleURL.href)}`;
+    showToast('需要 Anywhere 397+；导入后停用同名旧独立插件');
+  } catch (error) { showToast(error.message); }
 }
 
 function setBusy(busy) {
@@ -1119,4 +1158,4 @@ function dismissInstallHint() {
   els.installHint.hidden = true;
 }
 
-initializeStartupSelector({onChange:()=>renderMitm()}).then(value=>{startupSelector=value;renderMitm();}).catch(error=>showToast("开屏选择加载失败："+error.message));
+initializeStartupSelector({onChange:()=>renderMitm(),onImport:()=>recordImport(['mitm/StartupAds.amrs'])}).then(value=>{startupSelector=value;renderMitm();}).catch(error=>showToast("开屏选择加载失败："+error.message));
