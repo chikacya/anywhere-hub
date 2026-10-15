@@ -1,14 +1,14 @@
-const CACHE_NAME = "anywhere-hub-shell-v45-module-cards";
+const CACHE_NAME = "anywhere-hub-shell-v46-routing-fix";
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20261015-module-cards2",
-  "./app.js?v=20261015-module-cards2",
+  "./styles.css?v=20261015-routing-fix2",
+  "./app.js?v=20261015-routing-fix2",
   "./manifest.webmanifest?v=logo-original",
   "./report-worker.js",
   "./startup-selector.css?v=3",
   "./lib/startup-core.mjs",
-  "./lib/startup-selector.mjs?v=20261015-module-cards2",
+  "./lib/startup-selector.mjs?v=20261015-routing-fix2",
   "./icons/startup-ads.png",
   "./lib/arrs.mjs",
   "./lib/attribution.mjs",
@@ -16,7 +16,7 @@ const SHELL = [
   "./lib/normalize.mjs",
   "./lib/parser.mjs",
   "./lib/zip.mjs",
-  "./lib/mitm-updates.mjs?v=20261015-module-cards2",
+  "./lib/mitm-updates.mjs?v=20261015-routing-fix2",
   "./icons/anywhere-hub-mark.svg?v=logo-original",
   "./icons/anywhere-hub-180.png?v=logo-original",
   "./icons/anywhere-hub-192.png?v=logo-original",

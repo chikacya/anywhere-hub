@@ -18,7 +18,7 @@ Anywhere 规则集、MITM 脚本导入与本地隐私报告转换工具。规则
 
 ## 应用开屏选择
 
-当前入口：Common/BK7 仅通过 `anywhere://add-rules-link` 导入路由；普通 MITM 仅通过 `add-module` 导入仓库维护的 `.amod`。旧的 Routing 模块 API 保留兼容，但不再展示入口。MITM 卡片显示来源、主要描述及可展开的参数说明。两个旧 YouTube 版本已从列表排除，只保留 `YouTubeEnhanceDualSubsFull`。
+当前入口：Common/BK7 通过 `anywhere://add-rule-set?link=...` 导入路由，每次只交接一个文件；多选使用逐项导入面板，支持返回继续和重试上一项。`add-rules-link` 不是 App 支持的入口。普通 MITM 仅通过 `add-module` 导入仓库维护的 `.amod`。旧的 Routing 模块 API 保留兼容，但不再展示入口。MITM 卡片显示来源、主要描述及可展开的参数说明。两个旧 YouTube 版本已从列表排除，只保留 `YouTubeEnhanceDualSubsFull`。
 
 MITM脚本页的“应用开屏去广告”支持应用自选、全选、分享组合和选择文件导入/导出。一键导入动态模块，将脚本与配套路由一并加入；原独立文件接口保留兼容。选择链接可刷新更新，不保存每用户服务端状态。全选基线在 anywhere-rules 正式仓库。总集仅经过静态翻译检查，未做实机广告效果验证。
 

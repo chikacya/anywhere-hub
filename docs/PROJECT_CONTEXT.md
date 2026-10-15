@@ -1,5 +1,11 @@
 # Anywhere Hub 项目现状
 
+## 2026-10-15 路由深链纠正（本地，未推送）
+
+用户反馈能唤起 App 但没有路由导入界面。核对本地 Anywhere `381f9703` 的 DeepLinkManager：只接收 `add-rule-set`、`add-module` 等已列 host，且每个深链只提取一个 link。此前按用户给出的 `add-rules-link` 生成地址是错误的；仅 Hub 生成测试通过不证明 App 协议有效。
+现已改回 `anywhere://add-rule-set?link=<编码后的单个URL>`。Common/BK7 多选不再拼接重复 link 或按48个文件一批交给 App，而通过逐项面板交接；可稍后继续、重试上一项。交接不等同导入成功，明确需在 App 确认。单项下载量仍按实际发起计数，BK7 不统计。MITM 模块入口不变。
+SW v46。单项接收格式、队列推进/继续/重试测试通过，浏览器已检查面板；没有触发实机导入、提交、推送或部署。本段覆盖以下旧协议记录。
+
 ## 2026-10-15 本地修复（未发布）
 
 按用户要求取消路由模块入口，Common/BK7 只生成 `add-rules-link`；普通 MITM 只导入 catalog 指向的正式 `.amod`，开屏选择只导入动态模块。作者来源、主要功能直接展示，较长的参数/维护说明可展开。YouTube 旧 `YouTubeBlockADDualSubsArg` 与 `YouTubeEnhanceDualSubs` 从正式和回退列表、目录变化判断中排除，仅保留 `YouTubeEnhanceDualSubsFull`；不删除上游或破坏旧 API。

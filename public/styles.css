@@ -171,6 +171,12 @@ main { padding-top: 52px; }
 .empty-state .button { margin-top: 14px; }
 
 body.mitm-sheet-open { overflow: hidden; }
+.routing-import-queue .queue-note { margin-top: 12px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.routing-import-queue [data-progress] { margin-top: 20px; font-size: 13px; }
+.routing-import-queue [data-filename] { margin-top: 8px; font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
+.routing-import-queue .queue-actions { display: flex; gap: 10px; margin-top: 24px; }
+.routing-import-queue .queue-actions button { flex: 1; }
+.routing-import-queue [hidden] { display: none !important; }
 .mitm-update-sheet { position: fixed; z-index: 60; top: auto; right: 0; bottom: 0; left: 0; width: min(100% - 24px,540px); max-width: none; max-height: min(90dvh,760px); overflow: auto; margin: 0 auto; border: 1px solid var(--line); border-radius: 28px 28px 0 0; background: var(--surface); box-shadow: 0 -12px 40px rgba(0,0,0,.15); color: var(--ink); padding: 30px 24px calc(24px + env(safe-area-inset-bottom)); }
 .mitm-update-sheet::backdrop { background: rgba(9,20,35,.42); }
 .mitm-sheet-handle { position: absolute; top: 10px; left: 50%; width: 72px; height: 5px; border-radius: 3px; background: var(--line-strong); transform: translateX(-50%); }

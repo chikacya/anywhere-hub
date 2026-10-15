@@ -1,9 +1,9 @@
-import {initializeStartupSelector} from './lib/startup-selector.mjs?v=20261015-module-cards2';
+import {initializeStartupSelector} from './lib/startup-selector.mjs?v=20261015-routing-fix2';
 let startupSelector;
 import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";
 import { createZip } from "./lib/zip.mjs";
-import { enrichMitmFollows, hasMitmUpdate, mitmVersion, readMitmFollows, saveMitmFollows } from "./lib/mitm-updates.mjs?v=20261015-module-cards2";
+import { enrichMitmFollows, hasMitmUpdate, mitmVersion, readMitmFollows, saveMitmFollows } from "./lib/mitm-updates.mjs?v=20261015-routing-fix2";
 
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
 const EXCLUDED_MITM_PATHS = new Set(['mitm/YouTubeBlockADDualSubsArg.amrs', 'mitm/YouTubeEnhanceDualSubs.amrs']);
@@ -18,7 +18,6 @@ const METADATA_URLS = {
 };
 const METADATA_READ_BYTES = 48 * 1024;
 const BK7_PAGE_SIZE = 72;
-const MAX_IMPORT_LINKS = 48;
 const CATALOG_REFRESH_MS = 2 * 60 * 1000;
 const BK7_SELECTION_KEY = "anywhere-hub-bk7-selection";
 
@@ -98,7 +97,6 @@ let mitmScripts = [];
 let bk7Files = [];
 let bk7Groups = [];
 let bk7VisibleCount = BK7_PAGE_SIZE;
-let bk7BatchOffset = 0;
 let selectedBk7Urls = readStoredBk7Selection();
 let expandedBk7Groups = new Set();
 let toastTimer;
@@ -325,7 +323,6 @@ async function loadBk7({ force = false } = {}) {
       const availableUrls = new Set(bk7Files.map((file) => file.rawUrl));
       selectedBk7Urls = new Set([...selectedBk7Urls].filter((url) => availableUrls.has(url)));
       bk7Groups = groupBk7Files(bk7Files);
-      bk7BatchOffset = 0;
       bk7VisibleCount = BK7_PAGE_SIZE;
       els.bk7Status.textContent = `已同步 ${bk7Files.length.toLocaleString()} 个文件，${bk7Groups.length.toLocaleString()} 个目录。`;
       renderBk7();
@@ -443,7 +440,6 @@ function describeBk7Variant(file) {
 }
 
 function toggleBk7Group(group, checked) {
-  bk7BatchOffset = 0;
   for (const file of group.files) {
     if (checked) selectedBk7Urls.add(file.rawUrl);
     else selectedBk7Urls.delete(file.rawUrl);
@@ -453,7 +449,6 @@ function toggleBk7Group(group, checked) {
 }
 
 function toggleBk7File(file, checked) {
-  bk7BatchOffset = 0;
   if (checked) selectedBk7Urls.add(file.rawUrl);
   else selectedBk7Urls.delete(file.rawUrl);
   persistBk7Selection();
@@ -461,14 +456,12 @@ function toggleBk7File(file, checked) {
 }
 
 function selectFilteredBk7() {
-  bk7BatchOffset = 0;
   for (const group of filteredBk7Groups()) for (const file of group.files) selectedBk7Urls.add(file.rawUrl);
   persistBk7Selection();
   renderBk7();
 }
 
 function clearBk7Selection() {
-  bk7BatchOffset = 0;
   selectedBk7Urls.clear();
   persistBk7Selection();
   renderBk7();
@@ -486,22 +479,13 @@ function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
   els.importSelectedBk7.disabled = !hasSelection;
   els.bk7BatchBar.hidden = !hasSelection;
   els.bk7SelectedCount.textContent = `已选 ${selectedBk7Urls.size.toLocaleString()} 项`;
-  els.importSelectedBk7.textContent = selectedBk7Urls.size > MAX_IMPORT_LINKS
-    ? `导入第 ${Math.floor(bk7BatchOffset / MAX_IMPORT_LINKS) + 1}/${Math.ceil(selectedBk7Urls.size / MAX_IMPORT_LINKS)} 批`
-    : `批量导入 ${selectedBk7Urls.size}`;
+  els.importSelectedBk7.textContent = `导入所选 ${selectedBk7Urls.size}`;
 }
 
 function importSelectedBk7() {
   const selected = bk7Files.filter((file) => selectedBk7Urls.has(file.rawUrl));
   if (!selected.length) return;
-  const batch = selected.slice(bk7BatchOffset, bk7BatchOffset + MAX_IMPORT_LINKS);
-  if (selected.length > MAX_IMPORT_LINKS) {
-    const confirmed = window.confirm(`现在将第 ${Math.floor(bk7BatchOffset / MAX_IMPORT_LINKS) + 1} 批 ${batch.length} 项交给 Anywhere。已选项目不会自动清除，确认导入成功后可手动清空。`);
-    if (!confirmed) return;
-  }
-  openRuleSetImport(batch.map((file) => file.rawUrl));
-  bk7BatchOffset = bk7BatchOffset + batch.length >= selected.length ? 0 : bk7BatchOffset + batch.length;
-  updateBk7Controls();
+  openRuleSetImport(selected.map((file) => file.rawUrl));
 }
 
 function observeBk7Sentinel() {
@@ -1075,9 +1059,47 @@ function publishedModuleURL(script) {
 function openRuleSetImport(links, paths = []) {
   const validLinks = links.filter(Boolean);
   if (!validLinks.length) return;
+  if (validLinks.length > 1) return openRoutingQueue(validLinks, paths);
   recordImport(paths);
-  window.location.href = `anywhere://add-rules-link?${validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&")}`;
-  showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
+  window.location.href = `anywhere://add-rule-set?link=${encodeURIComponent(validLinks[0])}`;
+  showToast('正在打开 Anywhere 导入路由规则');
+}
+
+function openRoutingQueue(links, paths) {
+  const key = JSON.stringify([links, paths]);
+  let state = openRoutingQueue.state;
+  if (!state || state.key !== key) {
+    state?.dialog.remove();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'mitm-update-sheet routing-import-queue';
+    dialog.setAttribute('aria-labelledby', 'routingQueueTitle');
+    dialog.innerHTML = '<h2 id="routingQueueTitle">逐项导入路由</h2><p class="queue-note">Anywhere 每次接收一项，请完成后返回继续。</p><p data-progress role="status"></p><p data-filename></p><button class="button quiet" data-retry hidden>重试上一项</button><div class="queue-actions"><button class="button secondary" data-close>稍后继续</button><button class="button primary" data-next>导入此项</button></div>';
+    document.body.append(dialog);
+    state = { key, dialog, index: 0, last: -1 };
+    openRoutingQueue.state = state;
+    const progress = dialog.querySelector('[data-progress]');
+    const filename = dialog.querySelector('[data-filename]');
+    const next = dialog.querySelector('[data-next]');
+    state.render = () => {
+      const complete = state.index >= links.length;
+      progress.textContent = complete ? `${links.length} 项均已交给 Anywhere，请在 App 内确认结果。` : `下一项 ${state.index + 1} / ${links.length}`;
+      filename.textContent = complete ? '' : decodeURIComponent(new URL(links[state.index]).pathname.split('/').pop());
+      next.textContent = complete ? '完成' : '导入此项';
+      dialog.querySelector('[data-retry]').hidden = state.last < 0;
+    };
+    dialog.querySelector('[data-close]').onclick = () => dialog.close();
+    dialog.querySelector('[data-retry]').onclick = () => openRuleSetImport([links[state.last]], paths[state.last] ? [paths[state.last]] : []);
+    next.onclick = () => {
+      if (state.index >= links.length) { dialog.close(); dialog.remove(); openRoutingQueue.state = null; return; }
+      const index = state.index;
+      openRuleSetImport([links[index]], paths[index] ? [paths[index]] : []);
+      state.last = index;
+      state.index++;
+      state.render();
+    };
+    state.render();
+  }
+  if (!state.dialog.open) state.dialog.showModal();
 }
 
 
