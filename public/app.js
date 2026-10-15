@@ -1,11 +1,13 @@
-import {initializeStartupSelector} from './lib/startup-selector.mjs?v=397-dual-entry2';
+import {initializeStartupSelector} from './lib/startup-selector.mjs?v=20261015-module-cards2';
 let startupSelector;
 import { buildArrsFiles, targetsToRules } from "./lib/arrs.mjs";
 import { displayBundleName } from "./lib/bundle-names.mjs";
 import { createZip } from "./lib/zip.mjs";
-import { enrichMitmFollows, hasMitmUpdate, mitmVersion, readMitmFollows, saveMitmFollows } from "./lib/mitm-updates.mjs?v=20260928-hub-updates3";
+import { enrichMitmFollows, hasMitmUpdate, mitmVersion, readMitmFollows, saveMitmFollows } from "./lib/mitm-updates.mjs?v=20261015-module-cards2";
 
 const RAW_BASE = "https://raw.githubusercontent.com/chikacya/anywhere-rules/main";
+const EXCLUDED_MITM_PATHS = new Set(['mitm/YouTubeBlockADDualSubsArg.amrs', 'mitm/YouTubeEnhanceDualSubs.amrs']);
+const isVisibleMitmPath = path => /^mitm\/[^/]+\.amrs$/i.test(path) && !EXCLUDED_MITM_PATHS.has(path);
 const COMMON_INDEX_URL = `${RAW_BASE}/rules/common/index.json`;
 const BK7_INDEX_URL = `${RAW_BASE}/rules/index.json`;
 const MITM_API_URL = "https://api.github.com/repos/chikacya/anywhere-rules/contents/mitm?ref=main";
@@ -150,8 +152,6 @@ function bindEvents() {
     if (mitmSheetTrigger?.isConnected) mitmSheetTrigger.focus();
     mitmSheetTrigger = null;
   });
-  document.querySelector("#moduleSelectedRules").addEventListener("click", () => importSelectedRules(true));
-  document.querySelector("#moduleSelectedBk7").addEventListener("click", () => importSelectedBk7(true));
   els.importSelectedRules.addEventListener("click", () => importSelectedRules());
 
   els.refreshBk7.addEventListener("click", () => loadBk7({ force: true }));
@@ -283,7 +283,6 @@ function renderRules() {
     `;
     card.querySelector(".row-select").addEventListener("change", (event) => toggleRuleSelection(rule, event.currentTarget.checked));
     card.querySelector(".resource-import").addEventListener("click", () => openRuleSetImport([rule.rawUrl], [rule.path]));
-    addModuleButton(card, [rule.rawUrl], [rule.path]);
     hydrateResourceIcon(card);
     fragment.append(card);
   }
@@ -299,14 +298,13 @@ function toggleRuleSelection(rule, checked) {
 }
 
 function updateRuleImportButtons() {
-  document.querySelector("#moduleSelectedRules").disabled = selectedRuleUrls.size === 0;
   els.importSelectedRules.disabled = selectedRuleUrls.size === 0;
   els.importSelectedRules.textContent = selectedRuleUrls.size ? `导入所选 ${selectedRuleUrls.size}` : "导入所选";
 }
 
-function importSelectedRules(asModule = false) {
+function importSelectedRules() {
   const selected = rules.filter((rule) => selectedRuleUrls.has(rule.rawUrl));
-  (asModule ? openModuleImport : openRuleSetImport)(selected.map((rule) => rule.rawUrl), selected.map((rule) => rule.path));
+  openRuleSetImport(selected.map((rule) => rule.rawUrl), selected.map((rule) => rule.path));
 }
 
 async function loadBk7({ force = false } = {}) {
@@ -485,7 +483,6 @@ function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
   const hasSelection = selectedBk7Urls.size > 0;
   els.bk7SelectVisible.disabled = filteredCount === 0;
   els.bk7ClearSelection.disabled = !hasSelection;
-  document.querySelector("#moduleSelectedBk7").disabled = !hasSelection;
   els.importSelectedBk7.disabled = !hasSelection;
   els.bk7BatchBar.hidden = !hasSelection;
   els.bk7SelectedCount.textContent = `已选 ${selectedBk7Urls.size.toLocaleString()} 项`;
@@ -494,7 +491,7 @@ function updateBk7Controls(filteredCount = filteredBk7Groups().length) {
     : `批量导入 ${selectedBk7Urls.size}`;
 }
 
-function importSelectedBk7(asModule = false) {
+function importSelectedBk7() {
   const selected = bk7Files.filter((file) => selectedBk7Urls.has(file.rawUrl));
   if (!selected.length) return;
   const batch = selected.slice(bk7BatchOffset, bk7BatchOffset + MAX_IMPORT_LINKS);
@@ -502,7 +499,7 @@ function importSelectedBk7(asModule = false) {
     const confirmed = window.confirm(`现在将第 ${Math.floor(bk7BatchOffset / MAX_IMPORT_LINKS) + 1} 批 ${batch.length} 项交给 Anywhere。已选项目不会自动清除，确认导入成功后可手动清空。`);
     if (!confirmed) return;
   }
-  (asModule ? openModuleImport : openRuleSetImport)(batch.map((file) => file.rawUrl));
+  openRuleSetImport(batch.map((file) => file.rawUrl));
   bk7BatchOffset = bk7BatchOffset + batch.length >= selected.length ? 0 : bk7BatchOffset + batch.length;
   updateBk7Controls();
 }
@@ -522,10 +519,11 @@ async function loadMitm({ force = false } = {}) {
   setLoading(els.refreshMitm, true, "同步中");
   els.mitmStatus.textContent = "正在同步 GitHub main/mitm...";
   try {
+    if (startupSelector && (force || !mitmScripts.length)) await startupSelector.refresh();
     const catalog = await getRemoteCatalog("mitm", force);
     if (catalog) {
       mitmScripts = Object.entries(catalog.resources)
-        .filter(([path]) => path.startsWith("mitm/") && path.endsWith(".amrs"))
+        .filter(([path]) => isVisibleMitmPath(path))
         .map(([path, metadata]) => ({
           name: path.split("/").pop().replace(/\.amrs$/i, ""),
           title: metadata.title || path.split("/").pop().replace(/\.amrs$/i, ""),
@@ -535,7 +533,11 @@ async function loadMitm({ force = false } = {}) {
           reject: metadata.reject ? { rawUrl: `${RAW_BASE}/${metadata.reject}` } : null,
           iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : "",
           updated: metadata.updated || "",
-          version: metadata.version || "",
+          sourceVersion: metadata.version || "",
+          version: metadata.moduleVersion || metadata.version || "",
+          versionKind: metadata.moduleVersion ? "module-v1" : undefined,
+          module: metadata.module || "",
+          description: metadata.description || "",
           metadataLoaded: true,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -544,7 +546,7 @@ async function loadMitm({ force = false } = {}) {
       const mitmFiles = data.filter((item) => item.type === "file");
       const rejectFiles = new Map(mitmFiles.filter((item) => item.name.endsWith(".arrs")).map((item) => [item.name.toLowerCase(), item]));
       mitmScripts = mitmFiles
-        .filter((item) => item.name.endsWith(".amrs"))
+        .filter((item) => isVisibleMitmPath(`mitm/${item.name}`))
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((item) => ({
           name: item.name.replace(/\.amrs$/i, ""),
@@ -575,8 +577,14 @@ function renderMitm() {
     let collection=mitmScripts.find(s=>s.path==='mitm/StartupAds.amrs');
     if(!collection){collection={path:'mitm/StartupAds.amrs',title:'应用开屏去广告',name:'StartupAds',filename:'StartupAds.amrs',rawUrl:'https://raw.githubusercontent.com/chikacya/anywhere-rules/main/mitm/StartupAds.amrs',iconUrl:'/icons/startup-ads.png',updated:startupSelector.catalog.updated};mitmScripts.unshift(collection);}
     const position=mitmScripts.indexOf(collection);if(position>0){mitmScripts.splice(position,1);mitmScripts.unshift(collection);}
-    collection.version=startupSelector.revision;
+    collection.synthetic = !collection.metadataLoaded;
+    const saved = mitmFollows[collection.path];
+    collection.scope = saved?.scope || (saved?.revision?.includes(':') ? saved.revision.split('|').map(part=>part.slice(0,part.lastIndexOf(':'))) : startupSelector.ids);
+    collection.version = startupSelector.revisionFor(collection.scope);
+    collection.versionKind = 'startup-scope-v1';
+    collection.description ||= '来源：@ddgksf2013 ｜ 组合常用应用，按需去开屏。';
   }
+  enrichStoredMitmVersions();
   const query = els.mitmSearch.value.trim().toLowerCase();
   const updates = mitmScripts.filter((script) => hasMitmUpdate(mitmFollows[script.path], script));
   els.mitmUpdateCount.textContent = String(updates.length);
@@ -596,23 +604,19 @@ function renderMitm() {
       <div class="resource-card-head">${resourceIcon("anywhere", script.iconUrl)}${hasUpdate
         ? `<button class="mitm-update-badge" type="button" aria-label="查看 ${escapeHtml(script.title)} 的更新"><span class="update-dot" aria-hidden="true"></span>有更新</button>`
         : `<button class="mitm-follow ${followed ? "followed" : ""}" type="button" aria-pressed="${followed}" aria-label="${followed ? "取消关注" : "关注"} ${escapeHtml(script.title)} 的更新" title="${followed ? "取消关注更新" : "关注更新"}"><svg viewBox="0 0 24 24" aria-hidden="true">${followed ? '<path d="m5 12 4.5 4.5L19 7"/>' : '<path d="M12 5v14M5 12h14"/>'}</svg><span>${followed ? "已关注" : "关注"}</span></button>`}</div>
-      <div class="resource-card-copy"><h3>${escapeHtml(script.title)}</h3><p>${script.reject ? "脚本含配套 Reject；模块入口需 397+" : "保留规则集导入；模块入口需 397+"}</p></div>
-      <div class="resource-meta"><span>.amrs / .amod</span><span>${script.reject ? "含 Reject" : "脚本规则"}</span></div>
+      <div class="resource-card-copy"><h3>${escapeHtml(script.title)}</h3>${mitmDescription(script.description)}</div>
       <div class="resource-stats"><span class="resource-stat-pill download-stat" data-import-path="${escapeHtml(script.path)}">${importCountText(script.path)}</span>${script.updated ? `<time class="resource-stat-pill update-stat" datetime="${escapeHtml(script.updated)}">${escapeHtml(script.updated)}</time>` : ""}</div>
-      <div class="resource-actions"><a class="preview-link" href="${escapeHtml(script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="${hasUpdate ? "查看更新" : "导入"} ${escapeHtml(script.title)}">${hasUpdate ? "查看更新" : "一键导入"}</button></div>
+      <div class="resource-actions"><a class="preview-link" href="${escapeHtml(publishedModuleURL(script) || script.rawUrl)}" target="_blank" rel="noreferrer">查看 Raw</a><button class="resource-import" type="button" aria-label="导入 ${escapeHtml(script.title)}">一键导入</button></div>
     `;
     card.querySelector(".mitm-update-badge")?.addEventListener("click", (event) => openMitmSheet(script, event.currentTarget));
     card.querySelector(".mitm-follow")?.addEventListener("click", () => toggleMitmFollow(script));
+    if(script.path==='mitm/StartupAds.amrs'&&startupSelector&&!startupSelector.count&&!followed){const follow=card.querySelector('.mitm-follow');if(follow){follow.disabled=true;follow.title='请先选择应用，再关注此组合';}}
     card.querySelector(".resource-import").addEventListener("click", () => {
       if (script.path === "mitm/StartupAds.amrs" && startupSelector) { startupSelector.open(card.querySelector(".resource-import"), query); return; }
-      if (hasUpdate) {
-        openMitmSheet(script, card.querySelector(".resource-import"));
-        return;
-      }
-      openRuleSetImport([script.rawUrl, script.reject?.rawUrl].filter(Boolean), [script.path]);
+      void openModuleImport(script, card.querySelector(".resource-import"));
     });
-    if (script.path !== 'mitm/StartupAds.amrs') addModuleButton(card, [script.rawUrl, script.reject?.rawUrl].filter(Boolean), [script.path]);
-    if(script.path==='mitm/StartupAds.amrs'&&startupSelector){card.querySelector('.resource-import').textContent=startupSelector.count?'调整组合':'选择应用';card.querySelector('.resource-import').setAttribute('aria-label','选择应用');card.querySelector('.resource-card-copy p').textContent='组合常用应用，按需去开屏';card.querySelector('.resource-meta').innerHTML='<span>.amrs / .amod</span><span>可自选</span><span>静态转换</span>';}
+    if(script.path==='mitm/StartupAds.amrs'&&startupSelector){card.querySelector('.resource-import').textContent=startupSelector.count?'调整组合':'选择应用';card.querySelector('.resource-import').setAttribute('aria-label','选择应用');}
+    else if(!publishedModuleURL(script)){const button=card.querySelector('.resource-import');button.disabled=true;button.textContent='模块待发布';button.title='上游尚未提供正式 .amod 文件';}
     hydrateResourceIcon(card);
     fragment.append(card);
   }
@@ -637,7 +641,7 @@ function renderMitm() {
 }
 
 function enrichStoredMitmVersions() {
-  const next = enrichMitmFollows(mitmFollows, mitmScripts);
+  const next = enrichMitmFollows(mitmFollows, mitmScripts.filter(script => script.path !== 'mitm/StartupAds.amrs' || script.versionKind === 'startup-scope-v1'));
   if (next !== mitmFollows && saveMitmFollows(window.localStorage, next)) mitmFollows = next;
 }
 
@@ -685,7 +689,7 @@ function refreshMitmSheet() {
   els.mitmSheetTitle.textContent = script.title;
   els.mitmSheetPrevious.textContent = mitmFollows[script.path].updated || "日期未知";
   els.mitmSheetCurrent.textContent = script.updated || "日期未知";
-  els.mitmSheetRaw.href = script.rawUrl;
+  els.mitmSheetRaw.href = publishedModuleURL(script) || script.rawUrl;
 }
 
 function closeMitmSheet() {
@@ -901,7 +905,7 @@ async function hydrateResourceMetadata(resources, type, force) {
   for (let index = 0; index < resources.length; index += 1) {
     const metadata = metadataByPath[resources[index].path];
     if (!metadata) continue;
-    resources[index] = { ...resources[index], title: metadata.title || resources[index].title, iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : resources[index].iconUrl, updated: metadata.updated || "", version: metadata.version || "", metadataLoaded: true };
+    resources[index] = { ...resources[index], title: metadata.title || resources[index].title, iconUrl: metadata.icon ? `data:image/png;base64,${metadata.icon}` : resources[index].iconUrl, updated: metadata.updated || "", sourceVersion: metadata.version || "", version: metadata.moduleVersion || metadata.version || "", versionKind: metadata.moduleVersion ? "module-v1" : undefined, module: metadata.module || "", description: metadata.description || "", metadataLoaded: true };
     changed = true;
   }
   if (changed) {
@@ -949,9 +953,9 @@ async function getRemoteCatalog(type, force = false) {
 }
 
 function catalogHasChanges(type, catalog) {
-  const resources = type === "common" ? rules : mitmScripts;
+  const resources = (type === "common" ? rules : mitmScripts).filter(resource => !resource.synthetic);
   const entries = Object.entries(catalog.resources)
-    .filter(([path]) => type === "common" ? /^rules\/common\/[^/]+\.arrs$/i.test(path) : /^mitm\/[^/]+\.amrs$/i.test(path));
+    .filter(([path]) => type === "common" ? /^rules\/common\/[^/]+\.arrs$/i.test(path) : isVisibleMitmPath(path));
   if (entries.length !== resources.length) return true;
   const current = new Map(resources.map((resource) => [resource.path, resource]));
   return entries.some(([path, metadata]) => {
@@ -959,7 +963,10 @@ function catalogHasChanges(type, catalog) {
     return !resource || resource.title !== (metadata.title || resource.name) ||
       resource.updated !== (metadata.updated || "") ||
       resource.iconUrl !== (metadata.icon ? `data:image/png;base64,${metadata.icon}` : "") ||
-      (type === "mitm" && (resource.version !== (metadata.version || "") ||
+      (type === "mitm" && ((resource.sourceVersion || "") !== (metadata.version || "") ||
+        (resource.module || "") !== (metadata.module || "") ||
+        (resource.description || "") !== (metadata.description || "") ||
+        (resource.path !== 'mitm/StartupAds.amrs' && resource.version !== (metadata.moduleVersion || metadata.version || "")) ||
         (resource.reject?.rawUrl || "") !== (metadata.reject ? `${RAW_BASE}/${metadata.reject}` : "")));
   });
 }
@@ -971,6 +978,7 @@ function refreshActiveCatalog() {
       Date.now() - (catalogCheckedAt.get(type) || 0) < CATALOG_REFRESH_MS) return;
   if (catalogRefreshes.has(type)) return catalogRefreshes.get(type);
   const refresh = (async () => {
+    if (type === "mitm" && startupSelector) await startupSelector.refresh();
     const catalog = await getRemoteCatalog(type, true);
     if (!catalog || !catalogHasChanges(type, catalog)) return;
     if (type === "mitm") await loadMitm();
@@ -1053,45 +1061,40 @@ function recordImport(paths) {
   void fetch("./api/import-stats", { method: "POST", body, keepalive: true }).catch(() => {});
 }
 
-function addModuleButton(card, links, paths) {
-  const button = document.createElement('button');
-  button.className = 'resource-module preview-link';
-  button.type = 'button';
-  button.textContent = '添加模块 · 397+';
-  button.addEventListener('click', () => openModuleImport(links, paths));
-  card.querySelector('.resource-actions').append(button);
+function mitmDescription(description = '') {
+  const parts = description.split(/\s*｜\s*/).filter(Boolean);
+  const source = parts.filter(part => /^(来源|作者)[：:]/.test(part)).join(' · ');
+  const body = parts.filter(part => !/^(来源|作者)[：:]/.test(part)).flatMap(part => part.match(/[^。！？]+[。！？]?/g) || []).map(part => part.trim()).filter(Boolean);
+  return `${source ? `<div class="resource-source">${escapeHtml(source)}</div>` : ''}<p class="mitm-description">${escapeHtml(body[0] || '请求与响应改写模块')}</p>${body.length > 1 ? `<details class="resource-details"><summary>参数与说明</summary><p>${escapeHtml(body.slice(1).join(' '))}</p></details>` : ''}`;
+}
+
+function publishedModuleURL(script) {
+  return /^modules\/[A-Za-z0-9_-]+\.amod$/.test(script.module || '') ? `${RAW_BASE}/${script.module}` : '';
 }
 
 function openRuleSetImport(links, paths = []) {
   const validLinks = links.filter(Boolean);
   if (!validLinks.length) return;
   recordImport(paths);
-  window.location.href = `anywhere://add-rule-set?${validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&")}`;
+  window.location.href = `anywhere://add-rules-link?${validLinks.map((link) => `link=${encodeURIComponent(link)}`).join("&")}`;
   showToast(`正在打开 Anywhere 导入 ${validLinks.length} 个规则集`);
 }
 
 
-async function openModuleImport(links, paths = []) {
-  const validLinks = links.filter(Boolean);
-  if (!validLinks.length) return;
+async function openModuleImport(script, button) {
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = '正在打开';
   try {
-    const files = validLinks.map(link => {
-      if (!link.startsWith(RAW_BASE + "/")) throw Error("规则来源不支持模块导入");
-      return link.slice(RAW_BASE.length + 1);
-    });
-    const mitm = files.find(path => /^mitm\/[A-Za-z0-9_-]+\.amrs$/.test(path));
-    const metadata = mitm ? (await getEmbeddedResourceMetadata('mitm', true))[mitm] : null;
-    const published = metadata?.module && /^modules\/[A-Za-z0-9_-]+\.amod$/.test(metadata.module) ? metadata.module : null;
-    const moduleURL = new URL(mitm
-      ? published ? `${RAW_BASE}/${published}` : `/api/modules/${mitm.split('/').pop().replace(/\.amrs$/, '')}.amod`
-      : '/api/modules/selection.amod', location.origin);
-    if (!mitm) moduleURL.searchParams.set('paths', [...new Set(files)].sort().join(','));
-    const response = await fetch(moduleURL.href);
+    const moduleURL = publishedModuleURL(script);
+    if (!moduleURL) throw Error('此脚本尚无正式模块，请稍后同步目录');
+    const response = await fetch(moduleURL);
     if (!response.ok) { const value = await response.json().catch(() => ({})); throw Error(value.error || "模块生成失败"); }
-    recordImport(paths);
-    window.location.href = `anywhere://add-module?link=${encodeURIComponent(moduleURL.href)}`;
-    showToast('需要 Anywhere 397+；导入后停用同名旧独立插件');
+    recordImport([script.path]);
+    window.location.href = `anywhere://add-module?link=${encodeURIComponent(moduleURL)}`;
+    showToast('正在打开 Anywhere 导入模块');
   } catch (error) { showToast(error.message); }
+  finally { button.disabled = false; button.textContent = '一键导入'; }
 }
 
 function setBusy(busy) {
@@ -1158,4 +1161,4 @@ function dismissInstallHint() {
   els.installHint.hidden = true;
 }
 
-initializeStartupSelector({onChange:()=>renderMitm(),onImport:()=>recordImport(['mitm/StartupAds.amrs'])}).then(value=>{startupSelector=value;renderMitm();}).catch(error=>showToast("开屏选择加载失败："+error.message));
+initializeStartupSelector({onChange:(reason)=>{if(reason==='selection'){const button=els.mitmList.querySelector('[data-path="mitm/StartupAds.amrs"] .resource-import');if(button)button.textContent=startupSelector?.count?'调整组合':'选择应用';}else{renderMitm();if(els.mitmUpdateSheet.open)refreshMitmSheet();}},onImport:()=>recordImport(['mitm/StartupAds.amrs'])}).then(value=>{startupSelector=value;renderMitm();}).catch(error=>showToast("开屏选择加载失败："+error.message));

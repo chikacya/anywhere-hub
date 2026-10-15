@@ -18,6 +18,10 @@ Anywhere 规则集、MITM 脚本导入与本地隐私报告转换工具。规则
 
 ## 应用开屏选择
 
-MITM脚本页的“应用开屏去广告”支持应用自选、全选、分享组合和选择文件导入/导出。选择链接可刷新更新，不保存每用户服务端状态。三份输出按所选应用生成；全选基线在 anywhere-rules 正式仓库。总集仅经过静态翻译检查，未做实机广告效果验证。
+当前入口：Common/BK7 仅通过 `anywhere://add-rules-link` 导入路由；普通 MITM 仅通过 `add-module` 导入仓库维护的 `.amod`。旧的 Routing 模块 API 保留兼容，但不再展示入口。MITM 卡片显示来源、主要描述及可展开的参数说明。两个旧 YouTube 版本已从列表排除，只保留 `YouTubeEnhanceDualSubsFull`。
 
-`src/generated/startup-bundle.json` 和 `public/lib/startup-core.mjs` 从 anywhere-mitm-workflow 的 `npm run startup-selection-build` 生成；ID字典仅追加，目录升级与重新部署一起进行。线上验证命令在维护仓库执行：`node tools/test-startup-api.mjs https://anywhere-hub.1628519350.workers.dev`。
+MITM脚本页的“应用开屏去广告”支持应用自选、全选、分享组合和选择文件导入/导出。一键导入动态模块，将脚本与配套路由一并加入；原独立文件接口保留兼容。选择链接可刷新更新，不保存每用户服务端状态。全选基线在 anywhere-rules 正式仓库。总集仅经过静态翻译检查，未做实机广告效果验证。
+
+`src/generated/startup-bundle.json` 和 `public/lib/startup-core.mjs` 从 anywhere-mitm-maintainer 的 `npm run startup-selection-build` 生成；ID字典仅追加，目录升级与重新部署一起进行。线上验证命令在维护仓库执行：`node tools/test-startup-api.mjs https://anywhere-hub.1628519350.workers.dev`。
+
+项目恢复记录见 [项目现状](docs/PROJECT_CONTEXT.md)，本地修复与验证见 [2026-10-15 修复](docs/updates/2026-10-15-import-ui-local.md)。

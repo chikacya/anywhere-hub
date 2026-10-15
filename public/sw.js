@@ -1,14 +1,14 @@
-const CACHE_NAME = "anywhere-hub-shell-v44-static-modules";
+const CACHE_NAME = "anywhere-hub-shell-v45-module-cards";
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20260928-hub-updates5",
-  "./app.js?v=20261014-static-modules",
+  "./styles.css?v=20261015-module-cards2",
+  "./app.js?v=20261015-module-cards2",
   "./manifest.webmanifest?v=logo-original",
   "./report-worker.js",
   "./startup-selector.css?v=3",
   "./lib/startup-core.mjs",
-  "./lib/startup-selector.mjs?v=397-dual-entry2",
+  "./lib/startup-selector.mjs?v=20261015-module-cards2",
   "./icons/startup-ads.png",
   "./lib/arrs.mjs",
   "./lib/attribution.mjs",
@@ -16,7 +16,7 @@ const SHELL = [
   "./lib/normalize.mjs",
   "./lib/parser.mjs",
   "./lib/zip.mjs",
-  "./lib/mitm-updates.mjs?v=20260928-hub-updates3",
+  "./lib/mitm-updates.mjs?v=20261015-module-cards2",
   "./icons/anywhere-hub-mark.svg?v=logo-original",
   "./icons/anywhere-hub-180.png?v=logo-original",
   "./icons/anywhere-hub-192.png?v=logo-original",

@@ -24,6 +24,16 @@ assert.deepEqual(enrichMitmFollows({ "mitm/Test.amrs": { updated: "2026-09-20", 
 assert.equal(hasMitmUpdate(enrichMitmFollows({ "mitm/Test.amrs": { updated: "2026-09-20", revision: "" } }, [{ path: "mitm/Test.amrs", updated: "2026-09-20", version: "def" }])["mitm/Test.amrs"], { updated: "2026-09-20", version: "ghi" }), true);
 saved.set("anywhere-hub-mitm-follows-v1", "not JSON");
 assert.deepEqual(readMitmFollows(storage), {});
+const moduleScript = { path: 'mitm/Test.amrs', updated: '2026-10-15', sourceVersion: 'abc', version: 'module-1', versionKind: 'module-v1' };
+const migrated = enrichMitmFollows({ 'mitm/Test.amrs': { updated: '2026-09-20', revision: 'abc' } }, [moduleScript]);
+assert.equal(hasMitmUpdate(migrated[moduleScript.path], moduleScript), false);
+assert.equal(hasMitmUpdate(migrated[moduleScript.path], { ...moduleScript, version: 'module-2' }), true);
+const changedMigration = enrichMitmFollows({ 'mitm/Test.amrs': { updated: '2026-09-20', revision: 'older-source' } }, [moduleScript]);
+assert.equal(hasMitmUpdate(changedMigration[moduleScript.path], moduleScript), true);
+const scoped = { updated: '2026-10-15', version: 'app-a:1', versionKind: 'startup-scope-v1', scope: ['app-a'] };
+saveMitmFollows(storage, { 'mitm/StartupAds.amrs': mitmVersion(scoped) });
+assert.deepEqual(readMitmFollows(storage)['mitm/StartupAds.amrs'].scope, ['app-a']);
+assert.equal(hasMitmUpdate(mitmVersion(scoped), { ...scoped, version: 'app-a:2' }), true);
 const fixture = path.join(root, "App_Privacy_Report_v4_2026-06-11T22_12_39.ndjson");
 
 assert.deepEqual(normalizeTarget("Example.COM."), {

@@ -141,6 +141,12 @@ main { padding-top: 52px; }
 .resource-kind { min-height: 27px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; font-weight: 720; line-height: 25px; padding: 0 9px; }
 .resource-card-copy { margin-top: 14px; }
 .resource-card-copy p { display: -webkit-box; overflow: hidden; margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.52; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.resource-source { margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.resource-card-copy p.mitm-description { display: block; overflow: visible; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.resource-details { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.resource-details summary { cursor: pointer; padding: 5px 0; color: var(--blue); }
+.resource-card-copy .resource-details p { display: block; overflow: visible; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.panel[data-panel="mitm"] .resource-actions > * { min-width: 0; min-height: 44px; }
 .resource-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 13px; }
 .resource-meta span { border-radius: 9px; background: var(--surface-raised); color: var(--muted); font-size: 11px; font-weight: 640; padding: 4px 7px; }
 .resource-stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
@@ -321,7 +327,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .resource-actions { flex-direction: column-reverse; }
   .resource-actions > * { width: 100%; }
   .panel[data-panel="mitm"] .resource-actions { flex-direction: row; gap: 5px; }
-  .panel[data-panel="mitm"] .resource-actions > * { width: auto; min-width: 0; min-height: 36px; font-size: 10px; padding: 0 3px; }
+  .panel[data-panel="mitm"] .resource-actions > * { width: auto; min-width: 0; min-height: 44px; font-size: 12px; padding: 0 3px; }
   .options label { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: 1ms !important; scroll-behavior: auto !important; transition-duration: 1ms !important; } }
